@@ -19,7 +19,7 @@ Phase 1 MVP of an AI-powered social media automation platform: connect Instagram
    ```bash
    npm install
    cp .env.example .env
-   # Edit .env or .env.local: add META_APP_ID, META_APP_SECRET, optional OPENAI_API_KEY and REDIS_URL
+   # Edit .env or .env.local: add META_APP_ID, META_APP_SECRET, optional OPENAI_API_KEY; for scheduling add REDIS_URL (see step 3)
    npm run dev
    ```
 
@@ -44,15 +44,29 @@ Phase 1 MVP of an AI-powered social media automation platform: connect Instagram
 
    Keep **Valid OAuth Redirect URIs** in sync with the URL users use (localhost for local dev, or your production URL).
 
-3. **Scheduling (optional)**
+3. **Scheduling — Redis + Worker (required for scheduled posts)**
 
-   Scheduled posts only run at their time if something processes them. Two options:
+   Scheduling is powered **only** by Redis + a long-running worker. An always-on machine is required; there is no cron-based fallback.
 
-   - **Option A – Redis + worker (recommended for local or a dedicated server)**  
-     Install and run Redis (e.g. `redis-server` or Docker). Set `REDIS_URL` in `.env` (e.g. `redis://localhost:6379`). Start the queue worker (see **Scripts** below) in a **separate terminal** so scheduled jobs are processed and published. If the worker or Redis is off, posts stay "scheduled"; use **Publish now** on a card to send that post to Instagram immediately.
+   **Setup:**
 
-   - **Option B – Vercel Cron (no Redis, for Vercel)**  
-     The app can process due scheduled posts via a cron endpoint. Set `CRON_SECRET` in the Vercel project (e.g. a long random string). The repo includes a `vercel.json` that triggers `GET /api/cron/process-scheduled` every minute. Vercel sends the request with `Authorization: Bearer <CRON_SECRET>` when `CRON_SECRET` is set, so scheduled posts will publish at their time without Redis or a worker. (Vercel Cron is available on Pro plan; otherwise use an external cron service to call the same URL with the same header.)
+   1. **Redis**  
+     - **Local / same machine:** Install Redis (e.g. `redis-server` or Docker) and set `REDIS_URL=redis://localhost:6379` in `.env` or `.env.local`.  
+     - **Remote (e.g. Upstash, Redis Cloud):** Create a Redis instance, get its URL, and set `REDIS_URL=redis://...` in `.env` on **both** the app and the worker machine (same URL).
+
+   2. **Worker (always-on machine)**  
+     - Clone or copy this repo to the machine that will run 24/7.  
+     - Install dependencies: `npm ci`.  
+     - Use the same `.env` (or `.env.local`) as the app, including `REDIS_URL`, `SUPABASE_*` if you use Supabase, and any keys the worker needs.  
+     - Start the worker: `npm run worker`. The worker will exit with a clear error if `REDIS_URL` is missing.  
+     - To run in the background and survive reboots:
+       - **systemd (Linux):** See `scripts/automation-worker.service.example`; copy to `/etc/systemd/system/`, set your user and project path, then `systemctl enable --now automation-worker`.  
+       - **PM2:** `npm i -g pm2 && pm2 start npm --name "automation-worker" -- run worker` then `pm2 save` and `pm2 startup`.
+
+   3. **App (Vercel or anywhere)**  
+     - Set `REDIS_URL` in the app’s environment to the **same** Redis URL the worker uses. When users schedule a post, the app enqueues a delayed job into Redis; the worker picks it up and publishes at the exact scheduled time. If `REDIS_URL` is missing or Redis is unreachable, the schedule API returns 503 with a clear message.
+
+   **Result:** Scheduled posts publish at the exact time. If the worker or Redis is down, posts stay "scheduled"; use **Publish now** on a card to send that post immediately.
 
 4. **Publish to Instagram (local vs production)**
 
@@ -80,7 +94,7 @@ Phase 1 MVP of an AI-powered social media automation platform: connect Instagram
 
    Vercel’s serverless environment has a **read-only filesystem**. The app detects Vercel (`VERCEL=1`) and uses `/tmp/.data` for the file-based store so **login and signup work** (no more `ENOENT: mkdir '.data'`).
 
-   - Set **Environment variables** in the Vercel project: `META_APP_ID`, `META_APP_SECRET`, `AUTH_SECRET`, `AUTH_PASSWORD`, and optionally `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GEMINI_API_KEY`, `REDIS_URL`, `CRON_SECRET`. Set `NEXT_PUBLIC_APP_URL` to your Vercel URL. If you use Vercel Cron for scheduled posts, set `CRON_SECRET` to a secret string.
+   - Set **Environment variables** in the Vercel project: `META_APP_ID`, `META_APP_SECRET`, `AUTH_SECRET`, `AUTH_PASSWORD`, `NEXT_PUBLIC_APP_URL`, and optionally `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GEMINI_API_KEY`, `REDIS_URL` (required for scheduling; same URL as the worker). Vercel is used only for the web app and API; scheduling runs on Redis + worker on an always-on machine.
    - In Meta and Google OAuth settings, add **production** redirect URIs: `https://automation-aditya.vercel.app/api/auth/instagram/callback` and `https://automation-aditya.vercel.app/api/drive/callback`.
 
    **Limitations on Vercel (without Supabase):** `/tmp` is ephemeral and not shared across serverless instances. User and post data may not persist reliably. **Use Supabase** (see below) so all app data is stored in the database and persists on Vercel. Image uploads still write to `public/uploads`, which is read-only on Vercel—for production you may also need object storage (e.g. Vercel Blob).
@@ -105,20 +119,18 @@ Phase 1 MVP of an AI-powered social media automation platform: connect Instagram
 
 - `npm run dev` — Next.js dev server
 - `npm run build` / `npm run start` — Production
-- **Worker (scheduled publish):** with Redis running, in a **separate terminal** (leave it open):
-
-  ```bash
-  npm run worker
-  ```
-  The worker loads `.env.local` automatically. If this isn’t running, scheduled posts are saved but **never published** at the set time.
+- **`npm run worker`** — Queue worker for scheduled posts (Redis + worker, machine always on). Run on an always-on machine with `REDIS_URL` set; loads `.env.local` automatically. Keeps running and publishes posts at their scheduled time. If this isn’t running, scheduled posts are saved but never published until you run the worker or use **Publish now** on a card.
 
 ## Architecture (MVP)
 
-- **Frontend:** Next.js App Router, Tailwind, Framer Motion, Zustand. Uploads via `fetch("/api/upload", { body: formData })` only — no Supabase client on the frontend.
+**Scheduling flow:** User → App (Vercel) → Redis → Worker (always-on machine) → Social API (Instagram/Facebook).
+
+- **Vercel:** Hosts the web app and API only. No built-in cron; scheduling is not done on Vercel.
+- **Frontend:** Next.js App Router, Tailwind, Framer Motion, Zustand. Uploads via `fetch("/api/upload", ...)` only — no Supabase client on the frontend.
 - **Supabase:** Browser → API route → **service role** (`getSupabase()`) → Supabase (DB + Storage). Never call Supabase from the frontend (anon role would hit RLS and fail).
 - **API routes:** `/api/upload`, `/api/drive/pick`, `/api/generate-caption`, `/api/add-logo`, `/api/schedule`, `/api/posts`, `/api/accounts`, `/api/auth/instagram`, `/api/auth/instagram/callback`
 - **Storage:** Supabase (when configured) or file-based (`.data/*.json`) for users, posts, media metadata, and connected accounts. Images: Supabase Storage bucket `uploads` (via API only) or `public/uploads/` locally.
-- **Queue:** BullMQ + Redis; worker publishes to Instagram at scheduled time
+- **Scheduling:** Redis + worker only. App enqueues a delayed job into Redis when the user schedules a post. Worker runs on an always-on machine, consumes the queue, and publishes at the exact scheduled time. Same `REDIS_URL` for app and worker.
 
 ## Roadmap
 
@@ -133,8 +145,7 @@ Phase 1 MVP of an AI-powered social media automation platform: connect Instagram
 | `META_APP_ID` | Yes (for Instagram) | Meta app ID |
 | `META_APP_SECRET` | Yes (for Instagram) | Meta app secret |
 | `OPENAI_API_KEY` | No | Caption/hashtag generation (fallback if missing) |
-| `REDIS_URL` | No (for scheduling) | Redis URL for BullMQ (optional if using Vercel Cron) |
-| `CRON_SECRET` | No (for Vercel Cron) | Secret for `/api/cron/process-scheduled`; set when using cron to run scheduled posts without Redis |
+| `REDIS_URL` | Yes (for scheduling) | Redis URL for BullMQ. Required for scheduling; use the same URL in the app and the worker. If missing, the worker exits with an error; the schedule API returns 503. |
 | `GOOGLE_CLIENT_ID` | No (for Drive) | Google OAuth client ID for Drive |
 | `GOOGLE_CLIENT_SECRET` | No (for Drive) | Google OAuth client secret |
 | `AUTH_PASSWORD` | Yes (for dashboard) | Password for `/login` |

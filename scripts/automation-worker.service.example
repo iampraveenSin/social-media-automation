@@ -1,0 +1,30 @@
+# Example systemd unit to run the automation worker on an always-on Linux machine.
+#
+# 1. Copy this file:
+#      sudo cp scripts/automation-worker.service.example /etc/systemd/system/automation-worker.service
+#
+# 2. Edit the unit: set YourUser and /path/to/automation to your user and project path.
+# 3. Put .env or .env.local (with REDIS_URL, SUPABASE_*, etc.) in the project directory.
+# 4. Enable and start:
+#      sudo systemctl daemon-reload
+#      sudo systemctl enable automation-worker
+#      sudo systemctl start automation-worker
+#      sudo systemctl status automation-worker
+#
+# Logs: journalctl -u automation-worker -f
+
+[Unit]
+Description=Automation queue worker (scheduled Instagram posts)
+After=network.target redis.service
+
+[Service]
+Type=simple
+User=YourUser
+WorkingDirectory=/path/to/automation
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/npm run worker
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

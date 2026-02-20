@@ -115,6 +115,15 @@ export async function POST(request: NextRequest) {
       await addDrivePostedRound(session.userId, driveFolderId ?? null, driveFileIds);
     }
     const jobId = await schedulePost(post, at);
+    if (jobId == null) {
+      return NextResponse.json(
+        {
+          error:
+            "Scheduling requires Redis. Set REDIS_URL in the app environment and run the worker (npm run worker) on an always-on machine.",
+        },
+        { status: 503 }
+      );
+    }
 
     return NextResponse.json({
       post: { ...post, id },
