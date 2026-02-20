@@ -15,17 +15,22 @@ const REDIS_OPTIONS = {
   connectTimeout: 10000,
 } as const;
 
-/** Connection options for BullMQ (same options for Queue and Worker). */
-const connectionOptions: { url: string; maxRetriesPerRequest: number; enableReadyCheck: boolean; connectTimeout: number } | null = process.env.REDIS_URL
-  ? { url: process.env.REDIS_URL, ...REDIS_OPTIONS }
-  : null;
+type ConnectionOptions = { url: string; maxRetriesPerRequest: number; enableReadyCheck: boolean; connectTimeout: number };
+
+/** Lazy: read at call time so worker sees REDIS_URL after dotenv loads. */
+function getConnectionOptions(): ConnectionOptions | null {
+  const url = process.env.REDIS_URL?.trim();
+  if (!url) return null;
+  return { url, ...REDIS_OPTIONS };
+}
 
 const QUEUE_NAME = "instagram-posts";
 
 export function getPostsQueue(): Queue<ScheduledPost, unknown, string> | null {
-  if (!connectionOptions) return null;
+  const opts = getConnectionOptions();
+  if (!opts) return null;
   try {
-    return new Queue<ScheduledPost, unknown, string>(QUEUE_NAME, { connection: connectionOptions });
+    return new Queue<ScheduledPost, unknown, string>(QUEUE_NAME, { connection: opts });
   } catch {
     return null;
   }
@@ -66,7 +71,8 @@ export async function isQueueAvailable(): Promise<boolean> {
 }
 
 export function startWorker(): void {
-  if (!connectionOptions) {
+  const opts = getConnectionOptions();
+  if (!opts) {
     throw new Error("REDIS_URL is required to start the worker.");
   }
   try {
@@ -144,7 +150,7 @@ export function startWorker(): void {
           }
         }
       },
-      { connection: connectionOptions }
+      { connection: opts }
     );
     worker.on("failed", (job, err) => {
       const jobId = job?.id ?? "?";
