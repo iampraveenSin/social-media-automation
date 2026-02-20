@@ -1,20 +1,31 @@
 // BullMQ queue for scheduled posts. Requires REDIS_URL (same URL for app and worker).
+// Connection options include timeouts so serverless (Vercel) doesn't hang when Redis is slow or unreachable.
+// isQueueAvailable() uses a lightweight ping with timeout (Upstash-friendly).
 
 import { Queue, Worker } from "bullmq";
+import IORedis from "ioredis";
 import { savePost, getPost } from "./store";
 import { publishToInstagram, publishToFacebookPage, isPublicImageUrl, LOCALHOST_MEDIA_MESSAGE } from "./instagram";
 import { getAccountByUserId } from "./store";
 import type { ScheduledPost } from "./types";
 
-const connection = process.env.REDIS_URL
-  ? { url: process.env.REDIS_URL }
-  : { host: "localhost", port: 6379 };
+const REDIS_OPTIONS = {
+  maxRetriesPerRequest: 1,
+  enableReadyCheck: false, // critical for Upstash
+  connectTimeout: 10000,
+} as const;
+
+/** Connection options for BullMQ (same options for Queue and Worker). */
+const connectionOptions: { url: string; maxRetriesPerRequest: number; enableReadyCheck: boolean; connectTimeout: number } | null = process.env.REDIS_URL
+  ? { url: process.env.REDIS_URL, ...REDIS_OPTIONS }
+  : null;
 
 const QUEUE_NAME = "instagram-posts";
 
 export function getPostsQueue(): Queue<ScheduledPost, unknown, string> | null {
+  if (!connectionOptions) return null;
   try {
-    return new Queue<ScheduledPost, unknown, string>(QUEUE_NAME, { connection });
+    return new Queue<ScheduledPost, unknown, string>(QUEUE_NAME, { connection: connectionOptions });
   } catch {
     return null;
   }
@@ -35,19 +46,29 @@ export function schedulePost(post: ScheduledPost, runAt: Date): Promise<string |
     });
 }
 
-/** Check if Redis is reachable (for dashboard status). */
+/** Lightweight Redis check for dashboard status (serverless-safe; does not hang). Uses ping() with timeout. */
 export async function isQueueAvailable(): Promise<boolean> {
-  const queue = getPostsQueue();
-  if (!queue) return false;
+  const url = process.env.REDIS_URL;
+  if (!url) return false;
+  let client: IORedis | null = null;
   try {
-    await queue.getJobCounts();
+    client = new IORedis(url, REDIS_OPTIONS);
+    const timeout = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error("Redis ping timeout")), 5000)
+    );
+    await Promise.race([client.ping(), timeout]);
     return true;
   } catch {
     return false;
+  } finally {
+    client?.disconnect();
   }
 }
 
 export function startWorker(): void {
+  if (!connectionOptions) {
+    throw new Error("REDIS_URL is required to start the worker.");
+  }
   try {
     const worker = new Worker<ScheduledPost, void, string>(
       QUEUE_NAME,
@@ -123,7 +144,7 @@ export function startWorker(): void {
           }
         }
       },
-      { connection }
+      { connection: connectionOptions }
     );
     worker.on("failed", (job, err) => {
       const jobId = job?.id ?? "?";
