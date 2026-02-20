@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
+import { isQueueAvailable } from "@/lib/queue";
 
-/** Temporary debug route — does not expose full Redis URL (only first 20 chars). */
 export async function GET() {
-  return NextResponse.json({
-    hasRedisUrl: !!process.env.REDIS_URL,
-    redisUrlValue: process.env.REDIS_URL?.slice(0, 20) ?? null,
-  });
+  try {
+    const ok = await isQueueAvailable();
+    return NextResponse.json({ redisOk: ok });
+  } catch {
+    return NextResponse.json({ redisOk: false });
+  }
 }
