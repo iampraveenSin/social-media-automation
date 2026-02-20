@@ -16,6 +16,9 @@ export function SiteHeader() {
           <a href="/#features" className="text-white/70 hover:text-white transition">
             Features
           </a>
+          <Link href="/privacy-policy" className="text-white/70 hover:text-white transition">
+            Privacy
+          </Link>
           <Link href="/login" className="text-white/70 hover:text-white transition">
             Log in
           </Link>
