@@ -252,7 +252,34 @@ export default function DashboardPage() {
     setError(null);
     setScheduleSuccess(false);
     try {
-      const mediaId = await getEffectiveMediaId();
+      let mediaId: string;
+      const singleMedia = selectedMediaIds.length === 1 ? media.find((m) => m.id === selectedMediaIds[0]) : null;
+      const isVideo = singleMedia?.mimeType?.startsWith("video/");
+
+      if (isVideo && singleMedia?.url) {
+        const fullUrl = singleMedia.url.startsWith("http") ? singleMedia.url : `${typeof window !== "undefined" ? window.location.origin : ""}${singleMedia.url.startsWith("/") ? singleMedia.url : "/" + singleMedia.url}`;
+        const converted = await convertVideoForInstagramInBrowser(fullUrl, undefined);
+        if (!converted.ok) {
+          setError(converted.error || "Video conversion failed");
+          setScheduling(false);
+          return;
+        }
+        const form = new FormData();
+        form.append("file", new File([converted.blob], "converted.mp4", { type: "video/mp4" }));
+        const upRes = await fetch("/api/upload", { method: "POST", body: form, credentials: "include" });
+        if (!upRes.ok) {
+          const upData = await upRes.json().catch(() => ({}));
+          setError(upData.error ?? "Upload of converted video failed");
+          setScheduling(false);
+          return;
+        }
+        const uploadedItem = (await upRes.json()) as MediaItem;
+        addMedia(uploadedItem);
+        mediaId = uploadedItem.id;
+      } else {
+        mediaId = await getEffectiveMediaId();
+      }
+
       const at = scheduledAt ?? new Date(Date.now() + 3600000);
       const driveIds = selectedMediaIds.map((id) => media.find((m) => m.id === id)?.driveFileId).filter(Boolean) as string[];
       const res = await fetch("/api/schedule", {
@@ -305,7 +332,7 @@ export default function DashboardPage() {
 
       if (isVideo && singleMedia?.url) {
         const fullUrl = singleMedia.url.startsWith("http") ? singleMedia.url : `${typeof window !== "undefined" ? window.location.origin : ""}${singleMedia.url.startsWith("/") ? singleMedia.url : "/" + singleMedia.url}`;
-        const converted = await convertVideoForInstagramInBrowser(fullUrl);
+        const converted = await convertVideoForInstagramInBrowser(fullUrl, undefined);
         if (!converted.ok) {
           setError(converted.error || "Video conversion failed");
           setPublishing(false);

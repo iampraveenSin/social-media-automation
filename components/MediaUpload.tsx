@@ -53,15 +53,6 @@ export function MediaUpload() {
     [upload]
   );
 
-  const uniqueSelectedIds = selectedMediaIds.filter((id, i, arr) => arr.indexOf(id) === i);
-  const selectedItemsRaw = uniqueSelectedIds.map((id) => media.find((m) => m.id === id)).filter(Boolean) as MediaItem[];
-  const seenIds = new Set<string>();
-  const selectedItems = selectedItemsRaw.filter((m) => {
-    if (seenIds.has(m.id)) return false;
-    seenIds.add(m.id);
-    return true;
-  });
-
   return (
     <div className="space-y-4">
       <p className="text-sm font-medium text-stone-800">Upload image</p>
@@ -90,47 +81,6 @@ export function MediaUpload() {
         </label>
       </div>
 
-      {/* Only selected images for the post — empty until user selects */}
-      <div className="space-y-2">
-        <p className="text-sm font-medium text-stone-800">Selected for this post</p>
-        {selectedItems.length === 0 ? (
-          <p className="rounded-xl border border-amber-200 bg-amber-50/50 px-4 py-3 text-sm text-stone-600">
-            No images selected. Click an image below or upload above to add to your post.
-          </p>
-        ) : (
-          <>
-            <p className="text-xs text-amber-700">
-              {selectedItems.length === 1
-                ? "1 image selected for the post."
-                : `${selectedItems.length} images — will be combined into one collage.`}
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {selectedItems.map((m, index) => (
-                <div key={`selected-${m.id}-${index}`} className="relative inline-block">
-                  <div className="relative h-20 w-20 overflow-hidden rounded-xl border-2 border-amber-400 ring-2 ring-amber-400/30">
-                    <img src={m.url} alt="" className="h-full w-full object-cover" />
-                    <span className="absolute bottom-0 left-0 rounded-tr bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-black shadow">
-                      {index + 1}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => toggleSelectedMediaId(m.id)}
-                    aria-label="Remove from post"
-                    className="absolute -right-1 -top-1 flex h-6 w-6 items-center justify-center rounded-full border border-white/20 bg-red-500/90 text-white shadow transition hover:bg-red-500"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="18" y1="6" x2="6" y2="18" />
-                      <line x1="6" y1="6" x2="18" y2="18" />
-                    </svg>
-                  </button>
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-      </div>
-
       {/* Your library — click to add to post */}
       {media.length > 0 && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-2">
@@ -149,7 +99,17 @@ export function MediaUpload() {
                       isSelected ? "border-amber-400 ring-2 ring-amber-400/30" : "border-amber-300 opacity-90 hover:opacity-100"
                     }`}
                   >
-                    <img src={m.url} alt="" className="h-full w-full object-cover" />
+                    {m.mimeType?.startsWith("video/") ? (
+                      <video
+                        src={m.url.startsWith("http") ? m.url : m.url.startsWith("/") ? `${typeof window !== "undefined" ? window.location.origin : ""}${m.url}` : `${typeof window !== "undefined" ? window.location.origin : ""}/${m.url}`}
+                        muted
+                        playsInline
+                        preload="metadata"
+                        className="h-full w-full object-cover pointer-events-none"
+                      />
+                    ) : (
+                      <img src={m.url} alt="" className="h-full w-full object-cover" />
+                    )}
                   </button>
                   <button
                     type="button"

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionFromRequest } from "@/lib/auth";
-import { getPost, savePost, getAccountByUserId, getAccounts } from "@/lib/store";
+import { getPost, savePost, getAccountByUserId, getAccounts, getMediaItem } from "@/lib/store";
 import { publishToInstagram, publishToFacebookPage, isPublicImageUrl, LOCALHOST_MEDIA_MESSAGE, buildCaptionWithHashtags } from "@/lib/instagram";
 import type { InstagramMediaType } from "@/lib/instagram";
 import { resolveVideoForPublish } from "@/lib/video";
@@ -37,18 +37,26 @@ export async function POST(
       return NextResponse.json({ error: "No Instagram account connected" }, { status: 400 });
     }
 
-    if (!isPublicImageUrl(post.mediaUrl)) {
+    // Prefer media record URL when mediaId is set (e.g. converted video from schedule flow).
+    let publishUrl = post.mediaUrl;
+    let isVideo = post.mediaType === "video";
+    if (post.mediaId) {
+      const mediaItem = await getMediaItem(post.mediaId, session.userId);
+      if (mediaItem?.url) {
+        publishUrl = mediaItem.url;
+        isVideo = mediaItem.mimeType?.startsWith("video/") ?? isVideo;
+      }
+    }
+    if (!isPublicImageUrl(publishUrl)) {
       await savePost({ ...post, status: "failed", error: LOCALHOST_MEDIA_MESSAGE });
       return NextResponse.json({ error: LOCALHOST_MEDIA_MESSAGE }, { status: 400 });
     }
 
     const caption = buildCaptionWithHashtags(post.caption, post.hashtags ?? []);
-    const isVideo = post.mediaType === "video";
-    let publishUrl = post.mediaUrl;
     let instagramMediaType: InstagramMediaType = "image";
     if (isVideo) {
       try {
-        const resolved = await resolveVideoForPublish(post.mediaUrl);
+        const resolved = await resolveVideoForPublish(publishUrl);
         publishUrl = resolved.url;
         instagramMediaType = resolved.placement;
       } catch (videoErr) {

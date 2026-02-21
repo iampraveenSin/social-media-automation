@@ -34,6 +34,15 @@ export function PostCard({ post, onPublishNow }: PostCardProps) {
 
   const meta = [post.topic, post.vibe, post.audience].filter(Boolean);
   const hashtagLine = Array.isArray(post.hashtags) ? post.hashtags.join(" ") : "";
+  const isVideo = post.mediaType === "video";
+  const mediaUrl =
+    !post.mediaUrl
+      ? ""
+      : post.mediaUrl.startsWith("http")
+        ? post.mediaUrl
+        : typeof window !== "undefined"
+          ? `${window.location.origin}${post.mediaUrl.startsWith("/") ? "" : "/"}${post.mediaUrl}`
+          : post.mediaUrl;
 
   return (
     <motion.article
@@ -43,7 +52,18 @@ export function PostCard({ post, onPublishNow }: PostCardProps) {
       className="flex gap-4 rounded-2xl border border-amber-200 bg-[#fffef9] p-4 transition hover:border-amber-300"
     >
       <div className="h-24 w-24 shrink-0 overflow-hidden rounded-xl bg-stone-100">
-        <img src={post.mediaUrl} alt="" className="h-full w-full object-cover" />
+        {mediaUrl &&
+          (isVideo ? (
+            <video
+              src={mediaUrl}
+              muted
+              playsInline
+              preload="metadata"
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <img src={mediaUrl} alt="" className="h-full w-full object-cover" />
+          ))}
       </div>
       <div className="min-w-0 flex-1 space-y-1.5">
         <p className="text-xs text-stone-600">

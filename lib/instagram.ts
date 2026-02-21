@@ -1,7 +1,7 @@
 // Meta Graph API client for Instagram Business/Creator accounts.
 // Requires: Business or Creator account linked to a Facebook Page.
 
-const META_GRAPH_BASE = "https://graph.facebook.com/v21.0";
+const META_GRAPH_BASE = "https://graph.facebook.com/v25.0";
 
 export interface PublishMediaResponse {
   id: string;
@@ -41,10 +41,20 @@ export async function publishToInstagram(
     return { error: LOCALHOST_MEDIA_MESSAGE };
   }
 
-  const result = await createAndPublishContainer(igUserId, accessToken, mediaUrl, caption, mediaType);
+  let result = await createAndPublishContainer(igUserId, accessToken, mediaUrl, caption, mediaType);
   if (!("error" in result)) return result;
 
   const errMsg = result.error ?? "";
+  const subcode = "error_subcode" in result ? result.error_subcode : undefined;
+  // If we sent VIDEO and got "Unknown media type" (2207023), try REELS (some apps/versions only accept REELS for video).
+  const videoUnknownType =
+    mediaType === "video" &&
+    (subcode === 2207023 || errMsg.toLowerCase().includes("unknown") || errMsg.toLowerCase().includes("invalid parameter"));
+  if (videoUnknownType) {
+    result = await createAndPublishContainer(igUserId, accessToken, mediaUrl, caption, "reels");
+    if (!("error" in result)) return result;
+  }
+
   const reelsRejected =
     mediaType === "reels" &&
     (errMsg.toLowerCase().includes("invalid parameter") ||
@@ -56,13 +66,15 @@ export async function publishToInstagram(
   return result;
 }
 
+type CreateContainerError = { error: string; error_subcode?: number };
+
 async function createAndPublishContainer(
   igUserId: string,
   accessToken: string,
   mediaUrl: string,
   caption: string,
   mediaType: InstagramMediaType
-): Promise<PublishMediaResponse | { error: string }> {
+): Promise<PublishMediaResponse | CreateContainerError> {
   const createUrl = `${META_GRAPH_BASE}/${igUserId}/media`;
   const params = new URLSearchParams({
     caption,
@@ -75,23 +87,24 @@ async function createAndPublishContainer(
     params.set("image_url", mediaUrl);
   }
 
-  const createRes = await fetch(createUrl, {
+  // Meta docs show params as query string; some environments reject form body for this endpoint.
+  const urlWithQuery = `${createUrl}?${params.toString()}`;
+  const createRes = await fetch(urlWithQuery, {
     method: "POST",
-    body: params,
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
   });
 
   const createJson = (await createRes.json()) as { id?: string; error?: { message?: string; code?: number; error_subcode?: number } | string };
   const createErr = parseMetaError(createJson.error);
+  const subcode =
+    typeof createJson.error === "object" && createJson.error !== null && "error_subcode" in createJson.error
+      ? (createJson.error as { error_subcode?: number }).error_subcode
+      : undefined;
   if (createErr) {
     if (mediaType === "video" || mediaType === "reels") {
-      console.error("[Instagram] Video create container failed:", {
-        message: createErr,
-        code: typeof createJson.error === "object" && createJson.error && "code" in createJson.error ? createJson.error.code : undefined,
-        error_subcode: typeof createJson.error === "object" && createJson.error && "error_subcode" in createJson.error ? (createJson.error as { error_subcode?: number }).error_subcode : undefined,
-      });
+      console.error("[Instagram] Video create container failed:", { message: createErr, code: typeof createJson.error === "object" && createJson.error && "code" in createJson.error ? createJson.error.code : undefined, error_subcode: subcode });
     }
-    return { error: createErr };
+    return { error: createErr, error_subcode: subcode };
   }
   const containerId = createJson.id;
   if (!containerId) return { error: "No container id returned" };
@@ -141,6 +154,15 @@ const CONTAINER_POLL_INTERVAL_MS = 2000;
 const CONTAINER_POLL_MAX_ATTEMPTS_IMAGE = 20; // ~40 seconds
 const CONTAINER_POLL_MAX_ATTEMPTS_VIDEO = 60; // ~2 minutes for video
 
+/** Known Instagram container error subcodes → user-facing message (see error-codes reference). */
+const CONTAINER_ERROR_MESSAGES: Record<number, string> = {
+  2207003: "Instagram took too long to download the media. Try a smaller file or a faster host.",
+  2207020: "Media expired. Please try again (re-upload or re-schedule).",
+  2207026: "Video format not supported. Use MP4 (H.264, AAC). Re-export or convert and try again.",
+  2207052: "Instagram could not fetch the media URL. Ensure the link is public and reachable (no auth, no localhost).",
+  2207053: "Upload failed. Try again or use a shorter/smaller video.",
+};
+
 /** Poll container status until FINISHED (or ERROR/EXPIRED). Returns error message or null. */
 async function waitForContainerReady(
   containerId: string,
@@ -148,15 +170,30 @@ async function waitForContainerReady(
   isVideo = false
 ): Promise<string | null> {
   const maxAttempts = isVideo ? CONTAINER_POLL_MAX_ATTEMPTS_VIDEO : CONTAINER_POLL_MAX_ATTEMPTS_IMAGE;
-  const statusUrl = `${META_GRAPH_BASE}/${containerId}?fields=status_code&access_token=${encodeURIComponent(accessToken)}`;
+  const statusUrl = `${META_GRAPH_BASE}/${containerId}?fields=status_code,status&access_token=${encodeURIComponent(accessToken)}`;
+  let errorPayload: { status_code?: string; status?: string | number } | null = null;
   for (let i = 0; i < maxAttempts; i++) {
     const res = await fetch(statusUrl);
-    const data = (await res.json()) as { status_code?: string; error?: { message: string } };
+    const data = (await res.json()) as { status_code?: string; status?: string | number; error?: { message: string } };
     if (data.error) return data.error.message ?? "Failed to check container status";
-    const status = data.status_code;
-    if (status === "FINISHED") return null;
-    if (status === "ERROR" || status === "EXPIRED") {
-      return status === "EXPIRED" ? "Media container expired before publish" : "Media container failed";
+    const statusCode = data.status_code;
+    if (statusCode === "FINISHED") return null;
+    if (statusCode === "EXPIRED") return "Media container expired before publish";
+    if (statusCode === "ERROR") {
+      errorPayload = { status_code: data.status_code, status: data.status };
+      if (isVideo && i < 3) {
+        await new Promise((r) => setTimeout(r, 10000));
+        continue;
+      }
+      const rawStatus = data.status;
+      const subcode =
+        typeof rawStatus === "number" ? rawStatus : typeof rawStatus === "string" ? parseInt(rawStatus, 10) : NaN;
+      const msg = !Number.isNaN(subcode) ? CONTAINER_ERROR_MESSAGES[subcode] : undefined;
+      const detail =
+        msg ||
+        (!Number.isNaN(subcode) ? "code " + subcode : "status: " + String(rawStatus ?? "unknown"));
+      console.error("[Instagram] Container ERROR:", JSON.stringify(errorPayload));
+      return "Media container failed (" + detail + "). Try a shorter/smaller video, re-export as MP4 (H.264, AAC), and ensure the media URL is public.";
     }
     await new Promise((r) => setTimeout(r, CONTAINER_POLL_INTERVAL_MS));
   }
@@ -261,5 +298,5 @@ export function getInstagramLoginUrl(baseUrl?: string): string {
     "ads_read",
     "business_management", // Required since Graph API v19 for /me/accounts to return Pages
   ];
-  return `https://www.facebook.com/v21.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scopes.join(",")}&response_type=code`;
+  return `https://www.facebook.com/v25.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scopes.join(",")}&response_type=code`;
 }

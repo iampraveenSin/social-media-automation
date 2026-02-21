@@ -151,7 +151,7 @@ export function PickFromDrive({ connected, folderId }: PickFromDriveProps) {
       {folderStack.length > 1 && (
         <div className="flex flex-wrap items-center gap-1 text-xs">
           {folderStack.map((f, i) => (
-            <span key={f.id} className="flex items-center gap-1">
+            <span key={`${i}-${f.id}`} className="flex items-center gap-1">
               {i > 0 && <span className="text-stone-400">/</span>}
               {i === folderStack.length - 1 ? (
                 <span className="font-medium text-amber-800">{f.name}</span>

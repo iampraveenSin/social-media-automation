@@ -11,7 +11,14 @@ export function PostPreview() {
     : [];
   const first = selected[0];
   const firstUrl = first?.url;
-  const displayUrl = firstUrl?.startsWith("http") ? firstUrl : firstUrl ? `${typeof window !== "undefined" ? window.location.origin : ""}${firstUrl}` : null;
+  const displayUrl =
+    !firstUrl
+      ? null
+      : firstUrl.startsWith("http")
+        ? firstUrl
+        : typeof window !== "undefined"
+          ? `${window.location.origin}${firstUrl.startsWith("/") ? "" : "/"}${firstUrl}`
+          : firstUrl;
   const isVideo = first?.mimeType?.startsWith("video/") ?? false;
   const captionLine = [caption, ...(Array.isArray(hashtags) ? hashtags : [])].filter(Boolean).join(" ") || "Your caption will appear here…";
 

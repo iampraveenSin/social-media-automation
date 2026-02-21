@@ -4,7 +4,7 @@
 
 import { Queue, Worker } from "bullmq";
 import IORedis from "ioredis";
-import { savePost, getPost } from "./store";
+import { savePost, getPost, getMediaItem } from "./store";
 import { publishToInstagram, publishToFacebookPage, isPublicImageUrl, LOCALHOST_MEDIA_MESSAGE, buildCaptionWithHashtags } from "./instagram";
 import type { InstagramMediaType } from "./instagram";
 import { resolveVideoForPublish } from "./video";
@@ -100,18 +100,26 @@ export function startWorker(): void {
             return;
           }
 
-          if (!isPublicImageUrl(updated.mediaUrl)) {
+          // Prefer media record URL when mediaId is set (e.g. converted video from schedule flow).
+          let publishUrl = updated.mediaUrl;
+          let isVideo = updated.mediaType === "video";
+          if (updated.mediaId) {
+            const mediaItem = await getMediaItem(updated.mediaId, appUserId);
+            if (mediaItem?.url) {
+              publishUrl = mediaItem.url;
+              isVideo = mediaItem.mimeType?.startsWith("video/") ?? isVideo;
+            }
+          }
+          if (!isPublicImageUrl(publishUrl)) {
             await savePost({ ...updated, status: "failed", error: LOCALHOST_MEDIA_MESSAGE });
             console.error(`[worker] Job failed jobId=${jobId} postId=${post.id}: ${LOCALHOST_MEDIA_MESSAGE}`);
             return;
           }
 
           const caption = buildCaptionWithHashtags(updated.caption, updated.hashtags ?? []);
-          const isVideo = updated.mediaType === "video";
-          let publishUrl = updated.mediaUrl;
           let instagramMediaType: InstagramMediaType = "image";
           if (isVideo) {
-            const resolved = await resolveVideoForPublish(updated.mediaUrl);
+            const resolved = await resolveVideoForPublish(publishUrl);
             publishUrl = resolved.url;
             instagramMediaType = resolved.placement;
           }

@@ -4,7 +4,7 @@ import { getSessionFromRequest } from "@/lib/auth";
 import { inferNicheFromProfile } from "@/lib/openai";
 import { v4 as uuidv4 } from "uuid";
 
-const META_GRAPH_BASE = "https://graph.facebook.com/v21.0";
+const META_GRAPH_BASE = "https://graph.facebook.com/v25.0";
 
 function originForLocalhost(origin: string): string {
   try {

@@ -47,6 +47,7 @@ export function LogoSettings() {
   return (
     <div className="space-y-3">
       <p className="text-sm font-medium text-stone-800">Logo (optional)</p>
+      <p className="text-xs text-stone-500">Applied to images only. Video posts are published without logo.</p>
       <input
         ref={fileInputRef}
         type="file"
