@@ -46,12 +46,16 @@ export interface LogoConfig {
   opacity: number;
 }
 
+export type PostMediaType = "image" | "video";
+
 export interface ScheduledPost {
   id: string;
   mediaId: string;
   mediaUrl: string;
   caption: string;
   hashtags: string[];
+  /** When set, used for Instagram publish (image vs video). Derived from media mimeType. */
+  mediaType?: PostMediaType;
   topic?: string;
   vibe?: string;
   audience?: string;
@@ -95,4 +99,24 @@ export interface DriveAccount {
   refreshToken: string;
   folderId?: string;
   connectedAt: string;
+}
+
+/** How often to auto-post from Drive. */
+export type RecurrenceFrequency = "daily" | "every_3_days" | "weekly" | "monthly";
+
+/** Default best times to post (9 AM, 2 PM, 7 PM) - user can edit. */
+export const DEFAULT_POST_TIMES = ["09:00", "14:00", "19:00"];
+
+export interface RecurrenceSettings {
+  appUserId: string;
+  enabled: boolean;
+  frequency: RecurrenceFrequency;
+  /** Next run time (ISO). When due, processor picks media from Drive and posts. */
+  nextRunAt: string | null;
+  /** Override Drive folder for recurring posts; else uses Drive account default. */
+  driveFolderId?: string | null;
+  /** Up to 3 times of day to post (HH:mm). Posts rotate through these so each post is at a different time. */
+  postTimes?: string[];
+  /** Index into postTimes for the next run (round-robin). */
+  nextTimeIndex?: number;
 }

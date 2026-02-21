@@ -1,4 +1,4 @@
-// Google Drive API helpers: OAuth, list images, download file.
+// Google Drive API helpers: OAuth, list images/videos, download file.
 
 const GOOGLE_AUTH = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN = "https://oauth2.googleapis.com/token";
@@ -12,6 +12,17 @@ const IMAGE_MIMES = [
   "image/webp",
   "image/bmp",
 ];
+
+const VIDEO_MIMES = [
+  "video/mp4",
+  "video/quicktime", // .mov
+  "video/webm",
+  "video/x-msvideo", // .avi
+  "video/gif",       // animated GIF as video
+];
+
+/** All mime types we support for posts (images + videos/GIFs). */
+const MEDIA_MIMES = [...IMAGE_MIMES, ...VIDEO_MIMES];
 
 /** Use http for localhost so OAuth callback works (dev server has no HTTPS). */
 function normalizeOriginForOAuth(origin: string): string {
@@ -107,12 +118,12 @@ export interface ListImagesResult {
   error?: string;
 }
 
-/** List image files in a folder. folderId can be 'root' for My Drive root. */
-export async function listImagesInFolder(
+/** List image and video files in a folder (for posts). folderId can be 'root' for My Drive root. */
+export async function listMediaInFolder(
   accessToken: string,
   folderId: string
 ): Promise<ListImagesResult> {
-  const mimeConditions = IMAGE_MIMES.map((m) => `mimeType='${m}'`).join(" or ");
+  const mimeConditions = MEDIA_MIMES.map((m) => `mimeType='${m}'`).join(" or ");
   const q = folderId === "root"
     ? `'root' in parents and (${mimeConditions})`
     : `'${folderId}' in parents and (${mimeConditions})`;
@@ -134,6 +145,64 @@ export async function listImagesInFolder(
     return { files: [], error: msg };
   }
   return { files: data.files ?? [] };
+}
+
+/** @deprecated Use listMediaInFolder. Kept for compatibility. */
+export const listImagesInFolder = listMediaInFolder;
+
+export interface DriveFolderItem {
+  id: string;
+  name: string;
+}
+
+export interface ListFolderContentsResult {
+  folders: DriveFolderItem[];
+  files: DriveFileItem[];
+  error?: string;
+}
+
+/** List subfolders and media files in a folder for browsing. folderId can be 'root'. */
+export async function listFolderContents(
+  accessToken: string,
+  folderId: string
+): Promise<ListFolderContentsResult> {
+  const parentQ = folderId === "root" ? "'root' in parents" : `'${folderId}' in parents`;
+  const folderQ = `${parentQ} and mimeType='application/vnd.google-apps.folder'`;
+  const folderParams = new URLSearchParams({
+    q: folderQ,
+    fields: "files(id,name)",
+    pageSize: "100",
+    orderBy: "name",
+    supportsAllDrives: "true",
+    includeItemsFromAllDrives: "true",
+  });
+  const folderRes = await fetch(`${DRIVE_API}/files?${folderParams.toString()}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const folderData = (await folderRes.json()) as { files?: { id: string; name: string }[]; error?: { message?: string } };
+  if (!folderRes.ok) {
+    return { folders: [], files: [], error: folderData.error?.message ?? `Drive API error ${folderRes.status}` };
+  }
+  const folders: DriveFolderItem[] = (folderData.files ?? []).map((f) => ({ id: f.id, name: f.name }));
+
+  const mimeConditions = MEDIA_MIMES.map((m) => `mimeType='${m}'`).join(" or ");
+  const fileQ = `${parentQ} and (${mimeConditions})`;
+  const fileParams = new URLSearchParams({
+    q: fileQ,
+    fields: "files(id,name,mimeType,thumbnailLink,webViewLink)",
+    pageSize: "100",
+    orderBy: "modifiedTime desc",
+    supportsAllDrives: "true",
+    includeItemsFromAllDrives: "true",
+  });
+  const fileRes = await fetch(`${DRIVE_API}/files?${fileParams.toString()}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const fileData = (await fileRes.json()) as { files?: DriveFileItem[]; error?: { message?: string } };
+  if (!fileRes.ok) {
+    return { folders, files: [], error: fileData.error?.message ?? `Drive API error ${fileRes.status}` };
+  }
+  return { folders, files: fileData.files ?? [] };
 }
 
 /** Download file binary from Drive. */

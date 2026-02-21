@@ -4,7 +4,7 @@
 import { isSupabaseConfigured } from "./supabase";
 import * as supabaseStore from "./store-supabase";
 import * as fileStore from "./store-file";
-import type { ScheduledPost, MediaItem, InstagramAccount, DriveAccount, User } from "./types";
+import type { ScheduledPost, MediaItem, InstagramAccount, DriveAccount, User, RecurrenceSettings } from "./types";
 
 const useSupabase = (): boolean => isSupabaseConfigured();
 
@@ -98,4 +98,19 @@ export async function addDrivePostedRound(
 
 export async function clearDrivePostedRound(appUserId: string, folderId: string | null | undefined): Promise<void> {
   return useSupabase() ? supabaseStore.clearDrivePostedRound(appUserId, folderId) : fileStore.clearDrivePostedRound(appUserId, folderId);
+}
+
+// Recurrence
+export async function getRecurrenceSettings(appUserId: string): Promise<RecurrenceSettings | null> {
+  return useSupabase() ? supabaseStore.getRecurrenceSettings(appUserId) : fileStore.getRecurrenceSettings(appUserId);
+}
+
+export async function saveRecurrenceSettings(appUserId: string, settings: RecurrenceSettings): Promise<void> {
+  return useSupabase()
+    ? supabaseStore.saveRecurrenceSettings(appUserId, settings)
+    : fileStore.saveRecurrenceSettings(appUserId, settings);
+}
+
+export async function getDueRecurrenceSettings(now: Date): Promise<RecurrenceSettings[]> {
+  return useSupabase() ? supabaseStore.getDueRecurrenceSettings(now) : fileStore.getDueRecurrenceSettings(now);
 }

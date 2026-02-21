@@ -46,7 +46,7 @@ export function LogoSettings() {
 
   return (
     <div className="space-y-3">
-      <p className="text-sm font-medium text-white/80">Logo (optional)</p>
+      <p className="text-sm font-medium text-stone-800">Logo (optional)</p>
       <input
         ref={fileInputRef}
         type="file"
@@ -57,7 +57,7 @@ export function LogoSettings() {
       <button
         type="button"
         onClick={() => fileInputRef.current?.click()}
-        className="w-full rounded-xl border border-white/15 bg-white/5 px-4 py-2.5 text-left text-sm text-white/70 hover:bg-white/10 transition"
+        className="w-full rounded-xl border border-amber-300 bg-white px-4 py-2.5 text-left text-sm text-stone-700 hover:bg-amber-50 transition"
       >
         {logoFile ? "Change logo" : "Upload PNG logo"}
       </button>
@@ -74,7 +74,7 @@ export function LogoSettings() {
                 type="button"
                 onClick={() => { setPosition(pos); applyConfig(); }}
                 className={`rounded-lg px-3 py-1.5 text-xs capitalize transition ${
-                  position === pos ? "bg-amber-500/30 text-amber-200" : "bg-white/10 text-white/70 hover:bg-white/15"
+                  position === pos ? "bg-amber-200 text-amber-900" : "bg-amber-50 text-stone-600 hover:bg-amber-100"
                 }`}
               >
                 {pos.replace("-", " ")}
@@ -82,7 +82,7 @@ export function LogoSettings() {
             ))}
           </div>
           <div>
-            <label className="text-xs text-white/60">Size %</label>
+            <label className="text-xs text-stone-600">Size %</label>
             <input
               type="range"
               min={5}
@@ -93,7 +93,7 @@ export function LogoSettings() {
             />
           </div>
           <div>
-            <label className="text-xs text-white/60">Opacity</label>
+            <label className="text-xs text-stone-600">Opacity</label>
             <input
               type="range"
               min={0}

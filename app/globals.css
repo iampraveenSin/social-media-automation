@@ -1,26 +1,47 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f8f6f2;
+  --foreground: #1c1917;
+  --accent: #d97706;
+  --accent-soft: #b45309;
+  --accent-bg: #fef3c7;
+  --luxury-gold: #d97706;
+  --luxury-gold-soft: #b45309;
+  --luxury-cream: #1c1917;
+  --luxury-border: rgba(217, 119, 6, 0.25);
+  --luxury-panel: #fffef9;
+  --luxury-panel-hover: #fef3c7;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Poppins", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --font-display: "Cormorant Garamond", Georgia, serif;
 }
 
 body {
-  background: var(--background);
+  background: var(--background) !important;
   color: var(--foreground);
   font-family: var(--font-sans);
+  min-height: 100vh;
+}
+
+/* All buttons and links use pointer cursor */
+button,
+a,
+[role="button"],
+[role="link"],
+label[for],
+input[type="submit"],
+input[type="button"],
+input[type="reset"],
+input[type="image"] {
+  cursor: pointer;
+}
+
+.font-display {
+  font-family: var(--font-display);
 }

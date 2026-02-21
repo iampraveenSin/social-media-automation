@@ -7,7 +7,7 @@ export interface PublishMediaResponse {
   id: string;
 }
 
-/** Instagram can only fetch images from public URLs. localhost is not reachable by Meta's servers. */
+/** Instagram can only fetch media from public URLs. localhost is not reachable by Meta's servers. */
 export function isPublicImageUrl(url: string): boolean {
   try {
     const u = new URL(url);
@@ -19,25 +19,61 @@ export function isPublicImageUrl(url: string): boolean {
 }
 
 export const LOCALHOST_MEDIA_MESSAGE =
-  "Image URL must be publicly accessible. Instagram cannot fetch images from localhost. Deploy your app (e.g. Vercel) and set NEXT_PUBLIC_APP_URL to your production URL (e.g. https://automation-aditya.vercel.app).";
+  "Media URL must be publicly accessible. Instagram cannot fetch from localhost. Deploy your app (e.g. Vercel) and set NEXT_PUBLIC_APP_URL to your production URL.";
 
-/** Publish to Instagram. Uses image_url only (public URL); Meta fetches the image. No fs.readFile. */
+export type InstagramMediaType = "image" | "video" | "reels";
+
+/** Build full caption text (caption + hashtags) for Instagram/Facebook. Used for all media types: image, video, GIF. */
+export function buildCaptionWithHashtags(caption: string, hashtags: string[]): string {
+  const list = [caption ?? "", ...(Array.isArray(hashtags) ? hashtags : [])].filter(Boolean);
+  return list.join("\n\n");
+}
+
+/** Publish image, video, or GIF to Instagram. Caption (with hashtags) is shown on all media types. */
 export async function publishToInstagram(
   igUserId: string,
   accessToken: string,
-  imageUrl: string,
-  caption: string
+  mediaUrl: string,
+  caption: string,
+  mediaType: InstagramMediaType = "image"
 ): Promise<PublishMediaResponse | { error: string }> {
-  if (!isPublicImageUrl(imageUrl)) {
+  if (!isPublicImageUrl(mediaUrl)) {
     return { error: LOCALHOST_MEDIA_MESSAGE };
   }
 
+  const result = await createAndPublishContainer(igUserId, accessToken, mediaUrl, caption, mediaType);
+  if (!("error" in result)) return result;
+
+  const errMsg = result.error ?? "";
+  const reelsRejected =
+    mediaType === "reels" &&
+    (errMsg.toLowerCase().includes("invalid parameter") ||
+      errMsg.toLowerCase().includes("unsupported") ||
+      errMsg.toLowerCase().includes("invalid request"));
+  if (reelsRejected) {
+    return createAndPublishContainer(igUserId, accessToken, mediaUrl, caption, "video");
+  }
+  return result;
+}
+
+async function createAndPublishContainer(
+  igUserId: string,
+  accessToken: string,
+  mediaUrl: string,
+  caption: string,
+  mediaType: InstagramMediaType
+): Promise<PublishMediaResponse | { error: string }> {
   const createUrl = `${META_GRAPH_BASE}/${igUserId}/media`;
   const params = new URLSearchParams({
-    image_url: imageUrl,
-    caption: caption,
+    caption,
     access_token: accessToken,
   });
+  if (mediaType === "video" || mediaType === "reels") {
+    params.set("media_type", mediaType === "reels" ? "REELS" : "VIDEO");
+    params.set("video_url", mediaUrl);
+  } else {
+    params.set("image_url", mediaUrl);
+  }
 
   const createRes = await fetch(createUrl, {
     method: "POST",
@@ -45,15 +81,23 @@ export async function publishToInstagram(
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
   });
 
-  const createJson = (await createRes.json()) as { id?: string; error?: { message: string } };
-  if (createJson.error) {
-    return { error: createJson.error.message ?? "Failed to create media container" };
+  const createJson = (await createRes.json()) as { id?: string; error?: { message?: string; code?: number; error_subcode?: number } | string };
+  const createErr = parseMetaError(createJson.error);
+  if (createErr) {
+    if (mediaType === "video" || mediaType === "reels") {
+      console.error("[Instagram] Video create container failed:", {
+        message: createErr,
+        code: typeof createJson.error === "object" && createJson.error && "code" in createJson.error ? createJson.error.code : undefined,
+        error_subcode: typeof createJson.error === "object" && createJson.error && "error_subcode" in createJson.error ? (createJson.error as { error_subcode?: number }).error_subcode : undefined,
+      });
+    }
+    return { error: createErr };
   }
   const containerId = createJson.id;
   if (!containerId) return { error: "No container id returned" };
 
-  // Instagram requires the container to reach FINISHED before media_publish (avoids "Media ID is not available").
-  const statusError = await waitForContainerReady(containerId, accessToken);
+  const isVideo = mediaType === "video" || mediaType === "reels";
+  const statusError = await waitForContainerReady(containerId, accessToken, isVideo);
   if (statusError) return { error: statusError };
 
   const publishUrl = `${META_GRAPH_BASE}/${igUserId}/media_publish`;
@@ -68,23 +112,44 @@ export async function publishToInstagram(
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
   });
 
-  const publishJson = (await publishRes.json()) as { id?: string; error?: { message: string } };
-  if (publishJson.error) {
-    return { error: publishJson.error.message ?? "Failed to publish" };
+  const publishJson = (await publishRes.json()) as { id?: string; error?: { message?: string; code?: number; error_subcode?: number } | string };
+  const publishErr = parseMetaError(publishJson.error);
+  if (publishErr) {
+    if (mediaType === "video" || mediaType === "reels") {
+      console.error("[Instagram] Video publish failed:", {
+        message: publishErr,
+        code: typeof publishJson.error === "object" && publishJson.error && "code" in publishJson.error ? publishJson.error.code : undefined,
+        error_subcode: typeof publishJson.error === "object" && publishJson.error && "error_subcode" in publishJson.error ? (publishJson.error as { error_subcode?: number }).error_subcode : undefined,
+      });
+    }
+    return { error: publishErr };
   }
   return { id: publishJson.id ?? containerId };
 }
 
+function parseMetaError(err: unknown): string | null {
+  if (err == null) return null;
+  if (typeof err === "string") return err;
+  if (typeof err === "object" && err !== null && "message" in err) {
+    const m = (err as { message?: string }).message;
+    return typeof m === "string" ? m : null;
+  }
+  return null;
+}
+
 const CONTAINER_POLL_INTERVAL_MS = 2000;
-const CONTAINER_POLL_MAX_ATTEMPTS = 20; // ~40 seconds max
+const CONTAINER_POLL_MAX_ATTEMPTS_IMAGE = 20; // ~40 seconds
+const CONTAINER_POLL_MAX_ATTEMPTS_VIDEO = 60; // ~2 minutes for video
 
 /** Poll container status until FINISHED (or ERROR/EXPIRED). Returns error message or null. */
 async function waitForContainerReady(
   containerId: string,
-  accessToken: string
+  accessToken: string,
+  isVideo = false
 ): Promise<string | null> {
+  const maxAttempts = isVideo ? CONTAINER_POLL_MAX_ATTEMPTS_VIDEO : CONTAINER_POLL_MAX_ATTEMPTS_IMAGE;
   const statusUrl = `${META_GRAPH_BASE}/${containerId}?fields=status_code&access_token=${encodeURIComponent(accessToken)}`;
-  for (let i = 0; i < CONTAINER_POLL_MAX_ATTEMPTS; i++) {
+  for (let i = 0; i < maxAttempts; i++) {
     const res = await fetch(statusUrl);
     const data = (await res.json()) as { status_code?: string; error?: { message: string } };
     if (data.error) return data.error.message ?? "Failed to check container status";
@@ -95,33 +160,53 @@ async function waitForContainerReady(
     }
     await new Promise((r) => setTimeout(r, CONTAINER_POLL_INTERVAL_MS));
   }
-  return "Media container did not become ready in time";
+  return isVideo ? "Video container did not become ready in time (try a shorter/smaller video)" : "Media container did not become ready in time";
 }
 
-/** Publish a photo to the connected Facebook Page (same Page linked to Instagram). */
+export type FacebookPageMediaType = "image" | "video";
+
+/** Publish a photo, video, or GIF to the connected Facebook Page. Caption is shown on all media types. */
 export async function publishToFacebookPage(
   pageId: string,
   pageAccessToken: string,
-  imageUrl: string,
-  caption: string
+  mediaUrl: string,
+  caption: string,
+  mediaType: FacebookPageMediaType = "image"
 ): Promise<{ id: string } | { error: string }> {
-  if (!isPublicImageUrl(imageUrl)) {
+  if (!isPublicImageUrl(mediaUrl)) {
     return { error: LOCALHOST_MEDIA_MESSAGE };
+  }
+
+  if (mediaType === "video") {
+    const url = `${META_GRAPH_BASE}/${pageId}/videos`;
+    const params = new URLSearchParams({
+      file_url: mediaUrl,
+      description: caption,
+      access_token: pageAccessToken,
+    });
+    const res = await fetch(url, {
+      method: "POST",
+      body: params,
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    });
+    const json = (await res.json()) as { id?: string; error?: { message: string } };
+    if (json.error) {
+      return { error: json.error.message ?? "Failed to post video to Facebook Page" };
+    }
+    return { id: json.id ?? "" };
   }
 
   const url = `${META_GRAPH_BASE}/${pageId}/photos`;
   const params = new URLSearchParams({
-    url: imageUrl,
+    url: mediaUrl,
     caption: caption,
     access_token: pageAccessToken,
   });
-
   const res = await fetch(url, {
     method: "POST",
     body: params,
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
   });
-
   const json = (await res.json()) as { id?: string; error?: { message: string } };
   if (json.error) {
     return { error: json.error.message ?? "Failed to post to Facebook Page" };

@@ -27,6 +27,9 @@ yarn-error.log*
 # Local data (file-based store when not using Supabase)
 .data/
 
+# Temp files (e.g. video trim)
+tmp/
+
 # Uploads (local files when not using Supabase storage)
 public/uploads/
 

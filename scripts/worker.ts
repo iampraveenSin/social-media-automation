@@ -18,6 +18,16 @@ if (!redisUrl) {
 }
 
 import { startWorker } from "../lib/queue";
+import { processRecurrence } from "../lib/recurrence";
 
 startWorker();
 console.log("[worker] Queue worker started. Waiting for scheduled jobs...");
+
+const RECURRENCE_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
+setInterval(() => {
+  processRecurrence().catch((err) => console.error("[worker] Recurrence run error:", err));
+}, RECURRENCE_INTERVAL_MS);
+setTimeout(() => {
+  processRecurrence().catch((err) => console.error("[worker] Recurrence run error:", err));
+}, 30_000);
+console.log("[worker] Recurring posts check every 10 minutes.");

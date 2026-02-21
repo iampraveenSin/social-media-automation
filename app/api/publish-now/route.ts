@@ -4,7 +4,9 @@ import path from "path";
 import { v4 as uuidv4 } from "uuid";
 import { getSessionFromRequest } from "@/lib/auth";
 import { savePost, getMediaItem, getAccounts, addDrivePostedRound } from "@/lib/store";
-import { publishToInstagram, publishToFacebookPage, isPublicImageUrl, LOCALHOST_MEDIA_MESSAGE } from "@/lib/instagram";
+import { publishToInstagram, publishToFacebookPage, isPublicImageUrl, LOCALHOST_MEDIA_MESSAGE, buildCaptionWithHashtags } from "@/lib/instagram";
+import type { InstagramMediaType } from "@/lib/instagram";
+import { resolveVideoForPublish } from "@/lib/video";
 import { addLogoToImage } from "@/lib/sharp-logo";
 import { uploadToSupabaseStorage } from "@/lib/storage";
 import { isSupabaseConfigured } from "@/lib/supabase";
@@ -35,14 +37,15 @@ export async function POST(request: NextRequest) {
 
     if (!media.url?.startsWith("http://") && !media.url?.startsWith("https://")) {
       return NextResponse.json(
-        { error: "Image does not have a public URL. Re-Upload or re-pick the image so it is stored in Supabase (public URL)." },
+        { error: "Media does not have a public URL. Re-upload or re-pick so it is stored in Supabase (public URL)." },
         { status: 400 }
       );
     }
+    const isVideo = media.mimeType?.startsWith("video/");
     let finalMediaUrl = media.url;
     const imageSource = media.url;
 
-    if (logoConfig?.url && imageSource) {
+    if (!isVideo && logoConfig?.url && imageSource) {
       let buffer: Buffer;
       try {
         const looksLikeUrl = typeof logoConfig.url === "string" && (logoConfig.url.startsWith("http") || logoConfig.url.includes("://"));
@@ -79,12 +82,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: LOCALHOST_MEDIA_MESSAGE }, { status: 400 });
     }
 
-    const captionText = [caption ?? "", ...(Array.isArray(hashtags) ? hashtags : [])].filter(Boolean).join("\n\n");
+    const captionText = buildCaptionWithHashtags(caption ?? "", Array.isArray(hashtags) ? hashtags : []);
+    let instagramMediaType: InstagramMediaType = "image";
+    let publishUrl = finalMediaUrl;
+    if (isVideo) {
+      try {
+        const resolved = await resolveVideoForPublish(finalMediaUrl);
+        publishUrl = resolved.url;
+        instagramMediaType = resolved.placement;
+      } catch (videoErr) {
+        const msg = videoErr instanceof Error ? videoErr.message : String(videoErr);
+        return NextResponse.json({ error: msg }, { status: 400 });
+      }
+    }
     const result = await publishToInstagram(
       account.instagramBusinessAccountId,
       account.accessToken,
-      finalMediaUrl,
-      captionText
+      publishUrl,
+      captionText,
+      instagramMediaType
     );
 
     if ("error" in result) {
@@ -95,8 +111,9 @@ export async function POST(request: NextRequest) {
       const fbResult = await publishToFacebookPage(
         account.facebookPageId,
         account.accessToken,
-        finalMediaUrl,
-        captionText
+        publishUrl,
+        captionText,
+        isVideo ? "video" : "image"
       );
       if ("error" in fbResult) {
         console.warn("Facebook Page post failed:", fbResult.error);
@@ -110,6 +127,7 @@ export async function POST(request: NextRequest) {
       mediaUrl: finalMediaUrl,
       caption: caption ?? "",
       hashtags: Array.isArray(hashtags) ? hashtags : [],
+      mediaType: isVideo ? "video" : "image",
       logoConfig: logoConfig ?? null,
       scheduledAt: new Date().toISOString(),
       status: "published",

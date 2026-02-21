@@ -2,11 +2,11 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { COOKIE_NAME, getTokenFromCookie, sessionCookieFormatValid } from "./lib/auth-edge";
 
-/** Base URL for redirects. Use NEXT_PUBLIC_APP_URL when set (e.g. production) so we don't send users to localhost when behind a proxy. */
+/** Base URL for redirects. Prefer NEXT_PUBLIC_APP_URL when set (production) to avoid redirect loops; else use request origin (localhost). */
 function getBaseUrl(request: NextRequest): string {
   const env = process.env.NEXT_PUBLIC_APP_URL?.trim();
   if (env) return env.replace(/\/+$/, "");
-  return request.nextUrl.origin;
+  return request.nextUrl.origin.replace(/\/+$/, "");
 }
 
 export function middleware(request: NextRequest) {

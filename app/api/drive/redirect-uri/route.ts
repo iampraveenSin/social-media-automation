@@ -9,7 +9,7 @@ import { getRedirectUri } from "@/lib/drive";
  * visit this endpoint to get the URI to add.
  */
 export async function GET(request: NextRequest) {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL?.trim() || request.nextUrl.origin;
+  const baseUrl = (process.env.NEXT_PUBLIC_APP_URL?.trim() || request.nextUrl.origin).replace(/\/+$/, "");
   const redirectUri = getRedirectUri(baseUrl);
   return NextResponse.json({
     redirectUri,

@@ -5,7 +5,9 @@
 import { Queue, Worker } from "bullmq";
 import IORedis from "ioredis";
 import { savePost, getPost } from "./store";
-import { publishToInstagram, publishToFacebookPage, isPublicImageUrl, LOCALHOST_MEDIA_MESSAGE } from "./instagram";
+import { publishToInstagram, publishToFacebookPage, isPublicImageUrl, LOCALHOST_MEDIA_MESSAGE, buildCaptionWithHashtags } from "./instagram";
+import type { InstagramMediaType } from "./instagram";
+import { resolveVideoForPublish } from "./video";
 import { getAccountByUserId } from "./store";
 import type { ScheduledPost } from "./types";
 
@@ -104,12 +106,21 @@ export function startWorker(): void {
             return;
           }
 
-          const caption = [updated.caption, ...(updated.hashtags ?? [])].join("\n\n");
+          const caption = buildCaptionWithHashtags(updated.caption, updated.hashtags ?? []);
+          const isVideo = updated.mediaType === "video";
+          let publishUrl = updated.mediaUrl;
+          let instagramMediaType: InstagramMediaType = "image";
+          if (isVideo) {
+            const resolved = await resolveVideoForPublish(updated.mediaUrl);
+            publishUrl = resolved.url;
+            instagramMediaType = resolved.placement;
+          }
           const result = await publishToInstagram(
             account.instagramBusinessAccountId,
             account.accessToken,
-            updated.mediaUrl,
-            caption
+            publishUrl,
+            caption,
+            instagramMediaType
           );
 
           if ("error" in result) {
@@ -119,12 +130,13 @@ export function startWorker(): void {
           }
 
           if (account.facebookPageId) {
-            const fbCaption = [updated.caption, ...(updated.hashtags ?? [])].join("\n\n");
+            const fbCaption = buildCaptionWithHashtags(updated.caption, updated.hashtags ?? []);
             const fbResult = await publishToFacebookPage(
               account.facebookPageId,
               account.accessToken,
-              updated.mediaUrl,
-              fbCaption
+              publishUrl,
+              fbCaption,
+              isVideo ? "video" : "image"
             );
             if ("error" in fbResult) {
               console.warn("[worker] Facebook Page post failed:", fbResult.error);

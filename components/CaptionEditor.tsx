@@ -95,38 +95,38 @@ export function CaptionEditor() {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <p className="text-sm font-medium text-white/80">Caption & hashtags</p>
+        <p className="text-sm font-medium text-stone-800">Caption & hashtags</p>
         <button
           type="button"
           onClick={generate}
           disabled={loading}
-          className="rounded-xl bg-amber-500/20 px-4 py-2 text-sm font-medium text-amber-300 transition hover:bg-amber-500/30 disabled:opacity-50"
+          className="rounded-xl bg-amber-100 px-4 py-2 text-sm font-medium text-amber-900 transition hover:bg-amber-200 disabled:opacity-50"
         >
           {loading ? "Analyzing image & generating…" : "Generate from image"}
         </button>
       </div>
       {fromImage && (
-        <p className="text-xs text-white/50">
+        <p className="text-xs text-stone-600">
           From image: {[fromImage.topic, fromImage.vibe, fromImage.audience].filter(Boolean).join(" · ")}
           {fromImage.mood ? ` · Mood: ${fromImage.mood}` : ""}
         </p>
       )}
       {generateError && (
-        <p className="text-xs text-red-400">{generateError}</p>
+        <p className="text-xs text-red-700">{generateError}</p>
       )}
       <textarea
         value={caption}
         onChange={(e) => setCaptionAndHashtags(e.target.value, hashtags)}
         placeholder="Caption is generated from your image (scene, mood, topic, vibe). Click “Generate from image”."
         rows={3}
-        className="w-full rounded-xl border border-white/15 bg-white/5 px-4 py-2.5 text-sm text-white placeholder-white/40 focus:border-amber-500/50 focus:outline-none focus:ring-1 focus:ring-amber-500/30 transition"
+        className="w-full rounded-xl border border-amber-300 bg-white px-4 py-2.5 text-sm text-stone-800 placeholder-stone-500 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-400 transition"
       />
       <input
         type="text"
         value={hashtags.join(" ")}
         onChange={(e) => setCaptionAndHashtags(caption, e.target.value.trim().split(/\s+/).filter(Boolean))}
         placeholder="Hashtags generated from image (8–12). Edit if needed."
-        className="w-full rounded-xl border border-white/15 bg-white/5 px-4 py-2.5 text-sm text-white placeholder-white/40 focus:border-amber-500/50 focus:outline-none focus:ring-1 focus:ring-amber-500/30 transition"
+        className="w-full rounded-xl border border-amber-300 bg-white px-4 py-2.5 text-sm text-stone-800 placeholder-stone-500 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-400 transition"
       />
     </div>
   );

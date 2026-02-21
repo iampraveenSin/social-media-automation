@@ -8,7 +8,7 @@ import { schedulePost } from "@/lib/queue";
 import { addLogoToImage } from "@/lib/sharp-logo";
 import { uploadToSupabaseStorage } from "@/lib/storage";
 import { isSupabaseConfigured } from "@/lib/supabase";
-import type { ScheduledPost } from "@/lib/types";
+import type { ScheduledPost, PostMediaType } from "@/lib/types";
 
 const UPLOADS_DIR = path.join(process.cwd(), "public", "uploads");
 
@@ -37,30 +37,32 @@ export async function POST(request: NextRequest) {
 
     let finalMediaUrl = mediaUrl;
     let imageSource: string | null = null;
+    let mediaType: PostMediaType = "image";
     if (mediaId) {
       const media = await getMediaItem(mediaId, session.userId);
       if (!media) return NextResponse.json({ error: "Media not found" }, { status: 404 });
       if (!media.url?.startsWith("http://") && !media.url?.startsWith("https://")) {
         return NextResponse.json(
-          { error: "Image does not have a public URL. Re-upload or re-pick the image so it is stored in Supabase (public URL)." },
+          { error: "Media does not have a public URL. Re-upload or re-pick so it is stored in Supabase (public URL)." },
           { status: 400 }
         );
       }
       finalMediaUrl = media.url;
       imageSource = media.url;
+      mediaType = media.mimeType?.startsWith("video/") ? "video" : "image";
     }
     if (!finalMediaUrl) {
       return NextResponse.json({ error: "Could not resolve media URL" }, { status: 400 });
     }
     if (!finalMediaUrl.startsWith("http://") && !finalMediaUrl.startsWith("https://")) {
       return NextResponse.json(
-        { error: "Image does not have a public URL. Re-upload or re-pick the image so it is stored in Supabase (public URL)." },
+        { error: "Media does not have a public URL. Re-upload or re-pick so it is stored in Supabase (public URL)." },
         { status: 400 }
       );
     }
-    if (logoConfig?.url && !imageSource) imageSource = finalMediaUrl;
+    if (mediaType === "image" && logoConfig?.url && !imageSource) imageSource = finalMediaUrl;
 
-    if (logoConfig?.url && imageSource) {
+    if (mediaType === "image" && logoConfig?.url && imageSource) {
       let buffer: Buffer;
       try {
         const looksLikeUrl = typeof logoConfig.url === "string" && (logoConfig.url.startsWith("http") || logoConfig.url.includes("://"));
@@ -99,6 +101,7 @@ export async function POST(request: NextRequest) {
       mediaUrl: finalMediaUrl,
       caption: caption ?? "",
       hashtags: Array.isArray(hashtags) ? hashtags : [],
+      mediaType,
       topic: (topic as string)?.trim() || undefined,
       vibe: (vibe as string)?.trim() || undefined,
       audience: (audience as string)?.trim() || undefined,

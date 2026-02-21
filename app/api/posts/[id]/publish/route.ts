@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionFromRequest } from "@/lib/auth";
 import { getPost, savePost, getAccountByUserId, getAccounts } from "@/lib/store";
-import { publishToInstagram, publishToFacebookPage, isPublicImageUrl, LOCALHOST_MEDIA_MESSAGE } from "@/lib/instagram";
+import { publishToInstagram, publishToFacebookPage, isPublicImageUrl, LOCALHOST_MEDIA_MESSAGE, buildCaptionWithHashtags } from "@/lib/instagram";
+import type { InstagramMediaType } from "@/lib/instagram";
+import { resolveVideoForPublish } from "@/lib/video";
 
 /** Publish a single scheduled or failed post now (e.g. one that was never queued or stuck). */
 export async function POST(
@@ -40,12 +42,27 @@ export async function POST(
       return NextResponse.json({ error: LOCALHOST_MEDIA_MESSAGE }, { status: 400 });
     }
 
-    const caption = [post.caption, ...(post.hashtags ?? [])].join("\n\n");
+    const caption = buildCaptionWithHashtags(post.caption, post.hashtags ?? []);
+    const isVideo = post.mediaType === "video";
+    let publishUrl = post.mediaUrl;
+    let instagramMediaType: InstagramMediaType = "image";
+    if (isVideo) {
+      try {
+        const resolved = await resolveVideoForPublish(post.mediaUrl);
+        publishUrl = resolved.url;
+        instagramMediaType = resolved.placement;
+      } catch (videoErr) {
+        const msg = videoErr instanceof Error ? videoErr.message : String(videoErr);
+        await savePost({ ...post, status: "failed", error: msg });
+        return NextResponse.json({ error: msg }, { status: 400 });
+      }
+    }
     const result = await publishToInstagram(
       account.instagramBusinessAccountId,
       account.accessToken,
-      post.mediaUrl,
-      caption
+      publishUrl,
+      caption,
+      instagramMediaType
     );
 
     if ("error" in result) {
@@ -57,8 +74,9 @@ export async function POST(
       const fbResult = await publishToFacebookPage(
         account.facebookPageId,
         account.accessToken,
-        post.mediaUrl,
-        caption
+        publishUrl,
+        caption,
+        isVideo ? "video" : "image"
       );
       if ("error" in fbResult) {
         console.warn("Facebook Page post failed:", fbResult.error);

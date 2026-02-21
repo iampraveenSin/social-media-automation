@@ -1,5 +1,5 @@
 import { getSupabase } from "./supabase";
-import type { ScheduledPost, MediaItem, InstagramAccount, DriveAccount, User } from "./types";
+import type { ScheduledPost, MediaItem, InstagramAccount, DriveAccount, User, RecurrenceSettings } from "./types";
 
 function requireAppUserId(appUserId: string | null | undefined): string {
   if (!appUserId || typeof appUserId !== "string") throw new Error("Unauthorized");
@@ -64,6 +64,7 @@ function rowToPost(r: Record<string, unknown>): ScheduledPost {
     mediaUrl: r.media_url as string,
     caption: (r.caption as string) ?? "",
     hashtags: Array.isArray(r.hashtags) ? (r.hashtags as string[]) : [],
+    mediaType: (r.media_type as ScheduledPost["mediaType"]) ?? undefined,
     topic: r.topic as string | undefined,
     vibe: r.vibe as string | undefined,
     audience: r.audience as string | undefined,
@@ -105,6 +106,7 @@ export async function savePost(post: ScheduledPost): Promise<void> {
     media_url: post.mediaUrl,
     caption: post.caption,
     hashtags: post.hashtags,
+    media_type: post.mediaType ?? null,
     topic: post.topic ?? null,
     vibe: post.vibe ?? null,
     audience: post.audience ?? null,
@@ -312,4 +314,68 @@ export async function clearDrivePostedRound(appUserId: string, folderId: string 
   if (!sb) return;
   const key = folderId ?? "root";
   await sb.from("drive_posted_round").delete().eq("app_user_id", appUserId).eq("folder_id", key);
+}
+
+// ---- Recurrence ----
+function rowToRecurrence(r: Record<string, unknown>): RecurrenceSettings {
+  let postTimes: string[] | undefined;
+  try {
+    if (typeof r.post_times === "string" && r.post_times) postTimes = JSON.parse(r.post_times) as string[];
+  } catch {
+    /* ignore */
+  }
+  return {
+    appUserId: r.app_user_id as string,
+    enabled: Boolean(r.enabled),
+    frequency: (r.frequency as RecurrenceSettings["frequency"]) ?? "daily",
+    nextRunAt: (r.next_run_at as string | null) ?? null,
+    driveFolderId: (r.drive_folder_id as string | null) ?? null,
+    postTimes,
+    nextTimeIndex: typeof r.next_time_index === "number" ? r.next_time_index : undefined,
+  };
+}
+
+export async function getRecurrenceSettings(appUserId: string): Promise<RecurrenceSettings | null> {
+  const sb = getSupabase();
+  if (!sb) return null;
+  const { data, error } = await sb
+    .from("recurrence_settings")
+    .select("*")
+    .eq("app_user_id", appUserId)
+    .maybeSingle();
+  if (error || !data) return null;
+  return rowToRecurrence(data as Record<string, unknown>);
+}
+
+export async function saveRecurrenceSettings(appUserId: string, settings: RecurrenceSettings): Promise<void> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("Supabase not configured");
+  const row: Record<string, unknown> = {
+    app_user_id: appUserId,
+    enabled: settings.enabled,
+    frequency: settings.frequency,
+    next_run_at: settings.nextRunAt ?? null,
+    drive_folder_id: settings.driveFolderId ?? null,
+  };
+  if (settings.postTimes != null) row.post_times = JSON.stringify(settings.postTimes);
+  if (settings.nextTimeIndex != null) row.next_time_index = settings.nextTimeIndex;
+  const { error } = await sb
+    .from("recurrence_settings")
+    .upsert(row, { onConflict: "app_user_id" });
+  if (error) throw error;
+}
+
+/** Returns enabled settings where next_run_at <= now (for recurrence processor). */
+export async function getDueRecurrenceSettings(now: Date): Promise<RecurrenceSettings[]> {
+  const sb = getSupabase();
+  if (!sb) return [];
+  const iso = now.toISOString();
+  const { data, error } = await sb
+    .from("recurrence_settings")
+    .select("*")
+    .eq("enabled", true)
+    .not("next_run_at", "is", null)
+    .lte("next_run_at", iso);
+  if (error) return [];
+  return (data ?? []).map((r) => rowToRecurrence(r as Record<string, unknown>));
 }

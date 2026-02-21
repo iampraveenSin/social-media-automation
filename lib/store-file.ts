@@ -3,7 +3,7 @@
 
 import { readFile, writeFile, mkdir } from "fs/promises";
 import path from "path";
-import type { ScheduledPost, MediaItem, InstagramAccount, DriveAccount, User } from "./types";
+import type { ScheduledPost, MediaItem, InstagramAccount, DriveAccount, User, RecurrenceSettings } from "./types";
 
 const DATA_DIR =
   process.env.VERCEL === "1" ? path.join("/tmp", ".data") : path.join(process.cwd(), ".data");
@@ -13,6 +13,7 @@ const MEDIA_FILE = path.join(DATA_DIR, "media.json");
 const ACCOUNTS_FILE = path.join(DATA_DIR, "accounts.json");
 const DRIVE_FILE = path.join(DATA_DIR, "drive.json");
 const DRIVE_POSTED_ROUND_FILE = path.join(DATA_DIR, "drive-posted-round.json");
+const RECURRENCE_FILE = path.join(DATA_DIR, "recurrence.json");
 
 async function ensureDataDir() {
   await mkdir(DATA_DIR, { recursive: true });
@@ -174,4 +175,26 @@ export async function clearDrivePostedRound(appUserId: string, folderId: string 
   if (Object.keys(byUser).length === 0) delete data[appUserId];
   else data[appUserId] = byUser;
   await writeJson(DRIVE_POSTED_ROUND_FILE, data);
+}
+
+// ---- Recurrence ----
+type RecurrenceStore = Record<string, RecurrenceSettings>;
+
+export async function getRecurrenceSettings(appUserId: string): Promise<RecurrenceSettings | null> {
+  const data = await readJson<RecurrenceStore>(RECURRENCE_FILE, {});
+  return data[appUserId] ?? null;
+}
+
+export async function saveRecurrenceSettings(appUserId: string, settings: RecurrenceSettings): Promise<void> {
+  const data = await readJson<RecurrenceStore>(RECURRENCE_FILE, {});
+  data[appUserId] = { ...settings, appUserId };
+  await writeJson(RECURRENCE_FILE, data);
+}
+
+export async function getDueRecurrenceSettings(now: Date): Promise<RecurrenceSettings[]> {
+  const data = await readJson<RecurrenceStore>(RECURRENCE_FILE, {});
+  const iso = now.toISOString();
+  return Object.values(data).filter(
+    (s) => s.enabled && s.nextRunAt != null && s.nextRunAt <= iso
+  );
 }

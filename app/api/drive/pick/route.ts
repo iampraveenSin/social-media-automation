@@ -11,6 +11,16 @@ import type { MediaItem } from "@/lib/types";
 
 const UPLOADS_DIR = path.join(process.cwd(), "public", "uploads");
 
+function mimeToExt(mimeType: string): string {
+  if (mimeType.includes("png")) return ".png";
+  if (mimeType.includes("gif")) return ".gif";
+  if (mimeType.includes("webp")) return ".webp";
+  if (mimeType.includes("mp4") || mimeType === "video/mp4") return ".mp4";
+  if (mimeType.includes("quicktime") || mimeType.includes("mov")) return ".mov";
+  if (mimeType.includes("webm")) return ".webm";
+  return ".jpg";
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));
@@ -39,14 +49,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Failed to download file from Drive" }, { status: 502 });
     }
 
-    const ext = path.extname(downloaded.name) || (downloaded.mimeType.includes("png") ? ".png" : ".jpg");
+    const ext = path.extname(downloaded.name) || mimeToExt(downloaded.mimeType);
     const id = uuidv4();
     const filename = `${id}${ext}`;
 
     if (isSupabaseConfigured()) {
       const result = await uploadToSupabaseStorage(filename, downloaded.buffer, downloaded.mimeType);
       if (!result.url) {
-        const msg = "error" in result ? result.error : "Failed to store image";
+        const msg = "error" in result ? result.error : "Failed to store media";
         return NextResponse.json({ error: msg }, { status: 502 });
       }
       const item: MediaItem = {
@@ -82,6 +92,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(item);
   } catch (e) {
     console.error("Drive pick error:", e);
-    return NextResponse.json({ error: "Failed to use image from Drive" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to use media from Drive" }, { status: 500 });
   }
 }

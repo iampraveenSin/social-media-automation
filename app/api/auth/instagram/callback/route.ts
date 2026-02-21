@@ -17,8 +17,8 @@ function originForLocalhost(origin: string): string {
 }
 
 export async function GET(request: NextRequest) {
-  const raw = process.env.NEXT_PUBLIC_APP_URL?.trim() || request.nextUrl.origin;
-  const baseUrl = originForLocalhost(raw.replace(/\/+$/, ""));
+  const raw = (process.env.NEXT_PUBLIC_APP_URL?.trim() || request.nextUrl.origin).replace(/\/+$/, "");
+  const baseUrl = originForLocalhost(raw);
   const session = getSessionFromRequest(request);
   if (!session) {
     return NextResponse.redirect(`${baseUrl}/login?redirect=/dashboard`);

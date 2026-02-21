@@ -35,16 +35,16 @@ export function ConnectDrive({ connected, folderId, onDisconnect, onFolderSave }
         href="/api/drive/auth"
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        className="flex items-center gap-4 rounded-2xl border border-white/10 bg-white/[0.02] px-5 py-4 transition hover:border-white/20 hover:bg-white/5"
+        className="flex items-center gap-4 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 transition hover:border-amber-300 hover:bg-amber-100"
       >
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/10 text-lg">📁</span>
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-lg">📁</span>
         <div className="min-w-0 flex-1">
-          <p className="font-medium text-white/90">Connect Google Drive</p>
-          <p className="text-sm text-white/60">
+          <p className="font-medium text-stone-800">Connect Google Drive</p>
+          <p className="text-sm text-stone-600">
             Link a folder of images. Pick from Drive instead of uploading each time.
           </p>
         </div>
-        <span className="text-white/40">→</span>
+        <span className="text-amber-600">→</span>
       </motion.a>
     );
   }
@@ -63,39 +63,39 @@ export function ConnectDrive({ connected, folderId, onDisconnect, onFolderSave }
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      className="rounded-2xl border border-sky-500/30 bg-sky-500/10 px-5 py-4 space-y-4"
+      className="rounded-2xl border border-amber-300 bg-amber-50 px-5 py-4 space-y-4"
     >
       <div className="flex flex-wrap items-center gap-4">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sky-500/20 text-lg text-sky-400">✓</span>
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-200 text-lg text-amber-700">✓</span>
         <div className="min-w-0 flex-1">
-          <p className="font-medium text-sky-200">Google Drive connected</p>
-          <p className="text-sm text-sky-300/80">Pick images from your Drive folder to create posts.</p>
+          <p className="font-medium text-amber-900">Google Drive connected</p>
+          <p className="text-sm text-stone-700">Pick images from your Drive folder to create posts.</p>
         </div>
         {onDisconnect && (
           <button
             type="button"
             onClick={handleDisconnect}
             disabled={disconnecting}
-            className="shrink-0 rounded-xl border border-sky-500/40 px-4 py-2 text-sm font-medium text-sky-200 transition hover:bg-sky-500/20 disabled:opacity-50"
+            className="shrink-0 rounded-xl border border-amber-400 px-4 py-2 text-sm font-medium text-amber-800 transition hover:bg-amber-100 disabled:opacity-50"
           >
             {disconnecting ? "Disconnecting…" : "Disconnect"}
           </button>
         )}
       </div>
       {onFolderSave && (
-        <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-sky-500/20">
+        <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-amber-200">
           <input
             type="text"
             value={folderInput}
             onChange={(e) => setFolderInput(e.target.value)}
             placeholder="Paste folder link or folder ID (optional)"
-            className="min-w-0 flex-1 rounded-xl border border-white/15 bg-white/5 px-4 py-2.5 text-sm text-white placeholder-white/40 focus:border-sky-500/50 focus:outline-none focus:ring-1 focus:ring-sky-500/30 transition"
+            className="min-w-0 flex-1 rounded-xl border border-amber-300 bg-white px-4 py-2.5 text-sm text-stone-800 placeholder-stone-500 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-400 transition"
           />
           <button
             type="button"
             onClick={handleSaveFolder}
             disabled={savingFolder || !folderInput.trim()}
-            className="shrink-0 rounded-xl bg-sky-500/20 px-4 py-2.5 text-sm font-medium text-sky-200 transition hover:bg-sky-500/30 disabled:opacity-50"
+            className="shrink-0 rounded-xl bg-amber-100 px-4 py-2.5 text-sm font-medium text-amber-900 transition hover:bg-amber-200 disabled:opacity-50"
           >
             {savingFolder ? "Saving…" : "Save folder"}
           </button>

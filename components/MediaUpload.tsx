@@ -64,13 +64,13 @@ export function MediaUpload() {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm font-medium text-white/80">Upload image</p>
+      <p className="text-sm font-medium text-stone-800">Upload image</p>
       <div
         onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
         onDragLeave={() => setDragging(false)}
         onDrop={onDrop}
         className={`rounded-2xl border-2 border-dashed p-6 text-center transition ${
-          dragging ? "border-amber-400/50 bg-amber-400/10" : "border-white/15 bg-white/5"
+          dragging ? "border-amber-400 bg-amber-50" : "border-amber-300 bg-amber-50/50"
         }`}
       >
         <input
@@ -83,23 +83,23 @@ export function MediaUpload() {
         />
         <label htmlFor="media-upload" className="cursor-pointer">
           {uploading ? (
-            <span className="text-white/70">Uploading…</span>
+            <span className="text-stone-600">Uploading…</span>
           ) : (
-            <span className="text-white/70">Drop an image or click to upload</span>
+            <span className="text-stone-600">Drop an image or click to upload</span>
           )}
         </label>
       </div>
 
       {/* Only selected images for the post — empty until user selects */}
       <div className="space-y-2">
-        <p className="text-sm font-medium text-white/80">Selected for this post</p>
+        <p className="text-sm font-medium text-stone-800">Selected for this post</p>
         {selectedItems.length === 0 ? (
-          <p className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/50">
+          <p className="rounded-xl border border-amber-200 bg-amber-50/50 px-4 py-3 text-sm text-stone-600">
             No images selected. Click an image below or upload above to add to your post.
           </p>
         ) : (
           <>
-            <p className="text-xs text-amber-400/90">
+            <p className="text-xs text-amber-700">
               {selectedItems.length === 1
                 ? "1 image selected for the post."
                 : `${selectedItems.length} images — will be combined into one collage.`}
@@ -146,7 +146,7 @@ export function MediaUpload() {
                       toggleSelectedMediaId(m.id);
                     }}
                     className={`relative h-20 w-20 overflow-hidden rounded-xl border-2 transition ${
-                      isSelected ? "border-amber-400 ring-2 ring-amber-400/30" : "border-white/15 opacity-80 hover:opacity-100"
+                      isSelected ? "border-amber-400 ring-2 ring-amber-400/30" : "border-amber-300 opacity-90 hover:opacity-100"
                     }`}
                   >
                     <img src={m.url} alt="" className="h-full w-full object-cover" />
