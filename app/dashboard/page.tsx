@@ -15,6 +15,7 @@ import { PostPreview } from "@/components/PostPreview";
 import { useAppStore } from "@/store/useAppStore";
 import { buildCollageBlob } from "@/lib/collage";
 import { markDriveFileIdsAsPosted } from "@/lib/drive-pick-round";
+import { convertVideoForInstagramInBrowser } from "@/lib/convert-video-browser";
 import type { ScheduledPost, MediaItem } from "@/lib/types";
 import type { RecurrenceFrequency } from "@/lib/types";
 import { DEFAULT_POST_TIMES } from "@/lib/types";
@@ -29,6 +30,7 @@ export default function DashboardPage() {
     setSelectedMediaIds,
     media,
     setMedia,
+    addMedia,
     scheduledAt,
     logoConfig,
     scheduledPosts,
@@ -297,7 +299,34 @@ export default function DashboardPage() {
     setPublishing(true);
     setError(null);
     try {
-      const mediaId = await getEffectiveMediaId();
+      let mediaId: string;
+      const singleMedia = selectedMediaIds.length === 1 ? media.find((m) => m.id === selectedMediaIds[0]) : null;
+      const isVideo = singleMedia?.mimeType?.startsWith("video/");
+
+      if (isVideo && singleMedia?.url) {
+        const fullUrl = singleMedia.url.startsWith("http") ? singleMedia.url : `${typeof window !== "undefined" ? window.location.origin : ""}${singleMedia.url.startsWith("/") ? singleMedia.url : "/" + singleMedia.url}`;
+        const converted = await convertVideoForInstagramInBrowser(fullUrl);
+        if (!converted.ok) {
+          setError(converted.error || "Video conversion failed");
+          setPublishing(false);
+          return;
+        }
+        const form = new FormData();
+        form.append("file", new File([converted.blob], "converted.mp4", { type: "video/mp4" }));
+        const upRes = await fetch("/api/upload", { method: "POST", body: form, credentials: "include" });
+        if (!upRes.ok) {
+          const upData = await upRes.json().catch(() => ({}));
+          setError(upData.error ?? "Upload of converted video failed");
+          setPublishing(false);
+          return;
+        }
+        const uploadedItem = (await upRes.json()) as MediaItem;
+        addMedia(uploadedItem);
+        mediaId = uploadedItem.id;
+      } else {
+        mediaId = await getEffectiveMediaId();
+      }
+
       const driveIds = selectedMediaIds.map((id) => media.find((m) => m.id === id)?.driveFileId).filter(Boolean) as string[];
       const res = await fetch("/api/publish-now", {
         method: "POST",

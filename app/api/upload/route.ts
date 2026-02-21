@@ -16,11 +16,14 @@ export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
-    if (!file || !file.type.startsWith("image/")) {
-      return NextResponse.json({ error: "Invalid or missing image file" }, { status: 400 });
+    if (!file) return NextResponse.json({ error: "Missing file" }, { status: 400 });
+    const isImage = file.type.startsWith("image/");
+    const isVideo = file.type === "video/mp4";
+    if (!isImage && !isVideo) {
+      return NextResponse.json({ error: "Invalid file type. Use image or video/mp4." }, { status: 400 });
     }
 
-    const ext = path.extname(file.name) || ".jpg";
+    const ext = path.extname(file.name) || (isVideo ? ".mp4" : ".jpg");
     const id = uuidv4();
     const filename = `${id}${ext}`;
     const bytes = await file.arrayBuffer();

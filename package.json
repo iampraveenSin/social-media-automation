@@ -13,6 +13,8 @@
     "worker": "tsx scripts/worker.ts"
   },
   "dependencies": {
+    "@ffmpeg/ffmpeg": "^0.12.15",
+    "@ffmpeg/util": "^0.12.2",
     "@google/genai": "^1.41.0",
     "@supabase/supabase-js": "^2.96.0",
     "bullmq": "^5.69.3",

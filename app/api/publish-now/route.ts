@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
     let publishUrl = finalMediaUrl;
     if (isVideo) {
       try {
-        const resolved = await resolveVideoForPublish(finalMediaUrl);
+        const resolved = await resolveVideoForPublish(publishUrl);
         publishUrl = resolved.url;
         instagramMediaType = resolved.placement;
       } catch (videoErr) {
