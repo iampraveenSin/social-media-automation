@@ -12,10 +12,24 @@ export async function GET(request: NextRequest) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const settings = await getRecurrenceSettings(session.userId);
   const payload = settings ?? { appUserId: session.userId, enabled: false, frequency: "daily" as RecurrenceFrequency, nextRunAt: null, postTimes: DEFAULT_POST_TIMES, nextTimeIndex: 0 };
+  let nextRunAt = payload.nextRunAt ?? null;
+  if (payload.enabled && nextRunAt) {
+    const now = new Date();
+    if (new Date(nextRunAt) <= now) {
+      const result = computeNextRunAtWithTimes(
+        payload.frequency ?? "daily",
+        now,
+        payload.postTimes ?? DEFAULT_POST_TIMES,
+        payload.nextTimeIndex ?? 0
+      );
+      nextRunAt = result.nextRunAt;
+    }
+  }
   return NextResponse.json({
     ...payload,
     postTimes: payload.postTimes ?? DEFAULT_POST_TIMES,
     nextTimeIndex: payload.nextTimeIndex ?? 0,
+    nextRunAt,
   });
 }
 

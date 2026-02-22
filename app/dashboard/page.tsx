@@ -184,6 +184,20 @@ export default function DashboardPage() {
   }, [account.connected, account.suggestedNiche, setNiche]);
 
   useEffect(() => {
+    if (!recurrence.enabled) return;
+    const opts = { credentials: "include" as RequestCredentials };
+    const refetch = () =>
+      fetch("/api/recurrence", opts)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d: { nextRunAt?: string | null } | null) => {
+          if (d && d.nextRunAt !== undefined) setRecurrence((p) => ({ ...p, nextRunAt: d.nextRunAt ?? null }));
+        })
+        .catch(() => {});
+    const id = setInterval(refetch, 60_000);
+    return () => clearInterval(id);
+  }, [recurrence.enabled]);
+
+  useEffect(() => {
     const opts = { credentials: "include" as RequestCredentials };
     const load = () =>
       fetch("/api/posts", opts)
@@ -418,7 +432,7 @@ export default function DashboardPage() {
             {drive.connected ? <p className="text-xs text-stone-700">Drive ✓</p> : <a href="/api/drive/auth" className="text-xs text-amber-700 hover:underline">Connect Drive</a>}
           </div>
           <label className="flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 cursor-pointer">
-            <input type="checkbox" checked={recurrence.enabled} onChange={async (e) => { const en = e.target.checked; setRecurrence((p) => ({ ...p, enabled: en })); setRecurrenceSaving(true); try { const r = await fetch("/api/recurrence", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ enabled: en, frequency: recurrence.frequency, postTimes: recurrence.postTimes }) }); const text = await r.text(); let d: { enabled?: boolean; nextRunAt?: string | null; error?: string } = {}; try { if (text) d = JSON.parse(text); } catch { /* ignore */ } if (r.ok) setRecurrence((p) => ({ ...p, enabled: d.enabled ?? en, nextRunAt: d.nextRunAt ?? null })); else { setRecurrence((p) => ({ ...p, enabled: !en })); setError(d.error ?? "Failed to save auto-post"); } } catch (err) { setRecurrence((p) => ({ ...p, enabled: !en })); setError(err instanceof Error ? err.message : "Failed to save"); } finally { setRecurrenceSaving(false); } }} disabled={recurrenceSaving} className="h-3.5 w-3.5 rounded border-amber-500 text-amber-600" />
+            <input type="checkbox" checked={recurrence.enabled} onChange={async (e) => { const en = e.target.checked; setRecurrence((p) => ({ ...p, enabled: en })); setRecurrenceSaving(true); try { const r = await fetch("/api/recurrence", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ enabled: en, frequency: recurrence.frequency, postTimes: recurrence.postTimes, driveFolderId: drive.folderId ?? undefined }) }); const text = await r.text(); let d: { enabled?: boolean; nextRunAt?: string | null; error?: string } = {}; try { if (text) d = JSON.parse(text); } catch { /* ignore */ } if (r.ok) setRecurrence((p) => ({ ...p, enabled: d.enabled ?? en, nextRunAt: d.nextRunAt ?? null })); else { setRecurrence((p) => ({ ...p, enabled: !en })); setError(d.error ?? "Failed to save auto-post"); } } catch (err) { setRecurrence((p) => ({ ...p, enabled: !en })); setError(err instanceof Error ? err.message : "Failed to save"); } finally { setRecurrenceSaving(false); } }} disabled={recurrenceSaving} className="h-3.5 w-3.5 rounded border-amber-500 text-amber-600" />
             <span className="text-xs text-stone-700">Auto-post</span>
           </label>
           <button type="button" onClick={async () => { await fetch("/api/auth/logout", { method: "POST" }); window.location.href = "/"; }} className="w-full rounded-lg border border-amber-300 bg-amber-50 py-2 text-xs font-medium text-amber-900 hover:bg-amber-100 transition">Log out</button>
@@ -596,7 +610,9 @@ export default function DashboardPage() {
                   {/* Auto-post: daily / every 3 days / weekly / monthly + time selector */}
                   <div className="mt-6 pt-6 border-t border-amber-200">
                     <p className="text-sm font-medium text-stone-800 mb-2">Auto-post</p>
-                    <p className="text-xs text-stone-600 mb-3">One post per period (e.g. once per day). The time of that single post rotates through the 3 slots below so each post is at a different time. Run the worker for this to run.</p>
+                    <p className="text-xs text-stone-600 mb-3">
+                      One post per period (e.g. once per day). Auto-post picks one image or video from your <strong>Drive folder</strong> each time — connect Drive above and open a folder so it has media to use. The time rotates through the 3 slots below. You must run the worker (<code className="rounded bg-amber-100 px-1">npm run worker</code>) on an always-on machine (not Vercel) so posts publish at the scheduled time; it checks every 10 minutes.
+                    </p>
                     <div className="space-y-4">
                       <div className="flex flex-wrap items-center gap-4">
                         <label className="flex items-center gap-2 cursor-pointer">
@@ -613,7 +629,7 @@ export default function DashboardPage() {
                                   method: "POST",
                                   headers: { "Content-Type": "application/json" },
                                   credentials: "include",
-                                  body: JSON.stringify({ enabled: en, frequency: recurrence.frequency, postTimes: recurrence.postTimes }),
+                                  body: JSON.stringify({ enabled: en, frequency: recurrence.frequency, postTimes: recurrence.postTimes, driveFolderId: drive.folderId ?? undefined }),
                                 });
                                 const text = await r.text();
                                 let d: { enabled?: boolean; frequency?: RecurrenceFrequency; nextRunAt?: string | null; postTimes?: string[]; error?: string } = {};
@@ -655,7 +671,7 @@ export default function DashboardPage() {
                                 method: "POST",
                                 headers: { "Content-Type": "application/json" },
                                 credentials: "include",
-                                body: JSON.stringify({ enabled: recurrence.enabled, frequency: freq, postTimes: recurrence.postTimes }),
+                                body: JSON.stringify({ enabled: recurrence.enabled, frequency: freq, postTimes: recurrence.postTimes, driveFolderId: drive.folderId ?? undefined }),
                               });
                               const text = await r.text();
                               let d: { frequency?: RecurrenceFrequency; nextRunAt?: string | null; error?: string } = {};
@@ -708,7 +724,7 @@ export default function DashboardPage() {
                                       method: "POST",
                                       headers: { "Content-Type": "application/json" },
                                       credentials: "include",
-                                      body: JSON.stringify({ enabled: recurrence.enabled, frequency: recurrence.frequency, postTimes }),
+                                      body: JSON.stringify({ enabled: recurrence.enabled, frequency: recurrence.frequency, postTimes, driveFolderId: drive.folderId ?? undefined }),
                                     });
                                     const text = await r.text();
                                     let d: { nextRunAt?: string | null; postTimes?: string[]; error?: string } = {};
