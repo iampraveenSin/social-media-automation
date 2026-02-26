@@ -25,6 +25,7 @@ import { uploadToSupabaseStorage } from "./storage";
 import { publishToInstagram, publishToFacebookPage, isPublicImageUrl, buildCaptionWithHashtags } from "./instagram";
 import type { InstagramMediaType } from "./instagram";
 import { resolveVideoForPublish } from "./video";
+import { generateCaptionForMedia } from "./generate-caption";
 import type { MediaItem, ScheduledPost } from "./types";
 import { isSupabaseConfigured } from "./supabase";
 
@@ -171,8 +172,18 @@ export async function processRecurrenceForUser(appUserId: string): Promise<{ ok:
     return { ok: false, error: "Media URL not publicly accessible" };
   }
 
-  const caption = buildCaptionWithHashtags(DEFAULT_CAPTION, DEFAULT_HASHTAGS);
   const isVideo = downloaded.mimeType.startsWith("video/");
+  const userOverrides = {
+    niche: (settings.niche ?? account.suggestedNiche ?? "lifestyle").trim() || "lifestyle",
+    topic: (settings.topic ?? "").trim() || undefined,
+    vibe: (settings.vibe ?? "").trim() || undefined,
+    audience: (settings.audience ?? "").trim() || undefined,
+  };
+  const aiResult = await generateCaptionForMedia(mediaUrl, !isVideo, userOverrides);
+  const finalCaption = aiResult?.caption ?? DEFAULT_CAPTION;
+  const finalHashtags = aiResult?.hashtags?.length ? aiResult.hashtags : DEFAULT_HASHTAGS;
+  const caption = buildCaptionWithHashtags(finalCaption, finalHashtags);
+
   let publishUrl = mediaUrl;
   let instagramMediaType: InstagramMediaType = "image";
   if (isVideo) {
@@ -217,8 +228,8 @@ export async function processRecurrenceForUser(appUserId: string): Promise<{ ok:
     id: postId,
     mediaId,
     mediaUrl,
-    caption: DEFAULT_CAPTION,
-    hashtags: DEFAULT_HASHTAGS,
+    caption: finalCaption,
+    hashtags: finalHashtags,
     mediaType: isVideo ? "video" : "image",
     scheduledAt: now,
     publishedAt: now,

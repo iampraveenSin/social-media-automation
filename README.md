@@ -1,152 +1,384 @@
-# Automate — AI Social Media Automation (MVP)
+# Automate — Social Media Automation Platform
 
-Phase 1 MVP of an AI-powered social media automation platform: connect Instagram, upload images, generate captions and hashtags, add a logo, and schedule posts for auto-publish.
+A full-stack web application that lets you connect Instagram and Google Drive, compose posts (with AI-generated captions, optional logo, and media from Drive or uploads), and publish immediately or on a schedule. It supports images and videos (with in-browser conversion for Instagram compatibility) and an optional **auto-post** mode that picks one image or video from a Drive folder on a recurring schedule.
 
-## Phase 1 MVP features
+---
 
-- **Connect Instagram** — OAuth via Meta Graph API (Business or Creator account linked to a Facebook Page)
-- **Connect Google Drive** — OAuth; pick images from a Drive folder instead of uploading each time. Use “Load images” and “Pick random” or click a thumbnail to use that image for the post.
-- **Upload images** — Store in `public/uploads`, metadata in file-based store
-- **Generate caption + hashtags** — OpenAI API (optional; falls back to placeholder if no key)
-- **Add logo** — Position, size %, opacity; applied with Sharp when scheduling
-- **Schedule post** — BullMQ + Redis; post is published at the scheduled time
-- **Auto publish** — Worker consumes queue and publishes to Instagram via Graph API
+## Table of Contents
 
-## Quick start
+- [What This Project Is](#what-this-project-is)
+- [Why It Exists](#why-it-exists)
+- [Features in Detail](#features-in-detail)
+- [Architecture Overview](#architecture-overview)
+- [Project Structure](#project-structure)
+- [How to Start](#how-to-start)
+- [How to Manage & Configure](#how-to-manage--configure)
+- [Code & Functionality Deep Dive](#code--functionality-deep-dive)
+- [API Reference](#api-reference)
+- [Database (Supabase)](#database-supabase)
+- [Environment Variables](#environment-variables)
+- [Troubleshooting](#troubleshooting)
 
-1. **Install and run**
+---
 
-   ```bash
-   npm install
-   cp .env.example .env
-   # Edit .env or .env.local: add META_APP_ID, META_APP_SECRET, optional OPENAI_API_KEY; for scheduling add REDIS_URL (see step 3)
-   npm run dev
-   ```
+## What This Project Is
 
-   **If `OPENAI_API_KEY` is not picked up:** Next.js loads env only at startup. Put `.env.local` in the project root (same folder as `package.json`), use `OPENAI_API_KEY=sk-...` with no spaces around `=`, then **restart the dev server** (Ctrl+C, then `npm run dev`). To verify: open [http://localhost:3000/api/env-check](http://localhost:3000/api/env-check) — it shows whether the key is set (never shows the key).
+- **Type:** Next.js 16 (App Router) full-stack app with API routes, optional Supabase backend, and a separate Node.js worker process for scheduling.
+- **Purpose:** Central dashboard to create Instagram (and linked Facebook Page) posts from uploaded media or Google Drive, with optional AI captions, logo overlay (images only), and two ways to publish:
+  1. **Publish now** — post immediately.
+  2. **Schedule** — save a post and publish at a specific date/time via a queue worker.
+  3. **Auto-post** — recurring job picks one random image/video from a Drive folder and publishes at configured times (daily, every 3 days, weekly, monthly).
+- **Users:** Single-tenant or multi-tenant app users (email + password). Each user can connect one Instagram account (via Meta/Facebook) and one Google Drive account.
 
-   **Login:** Set `AUTH_PASSWORD` in `.env.local` (and optionally `AUTH_SECRET` for signing). The dashboard is protected; unauthenticated users are redirected to `/login`. Use **Log in** on the home page or go to `/login`, then **Log out** from the dashboard header.
+---
 
-2. **Meta / Instagram setup**
+## Why It Exists
 
-   - Create a [Meta for Developers](https://developers.facebook.com/) app.
-   - Add **Instagram Graph API** and **Facebook Login**.
-   - In Facebook Login settings, set **Valid OAuth Redirect URIs** to your app’s callback URL: **Local:** `http://localhost:3000/api/auth/instagram/callback` · **Production:** `https://automation-aditya.vercel.app/api/auth/instagram/callback` (no trailing slash).
-   - Use an Instagram **Business** or **Creator** account linked to a **Facebook Page**.
-   - Set `NEXT_PUBLIC_APP_URL`: **Local dev** `http://localhost:3000` · **Production** `https://automation-aditya.vercel.app`.
+- **Unify workflow:** Upload or pick media from Drive, write or generate captions, add a logo (for images), and publish or schedule in one place.
+- **Reliability:** Scheduled and auto-post rely on Redis + a long-running worker so posts run at the right time even when the web app is serverless (e.g. Vercel).
+- **Instagram compatibility:** Videos are converted in the browser to H.264/AAC MP4 so they meet Instagram’s requirements; logo overlay on video is not supported (logo applies to images only).
+- **Flexibility:** Use file-based storage locally or Supabase (DB + Storage) for production; same codebase supports both.
 
-   **“App not active” when users connect Instagram/Facebook**
+---
 
-   This message comes from Meta when the app is in **Development** mode. In that mode, only **Testers** can log in; everyone else sees “App not active… You will be able to log in when the app is reactivated.”
+## Features in Detail
 
-   - **Option A – Allow specific users (no review):** In [Meta for Developers](https://developers.facebook.com/) → your app → **App roles** → **Roles** → add each user’s Facebook account as a **Tester**. They can then connect Instagram from your dashboard.
-   - **Option B – Allow any user:** In the same app, open **App Review** and request the permissions you need (e.g. `instagram_basic`, `pages_show_list`, `pages_read_engagement`) and switch the app to **Live** once approved. Then any user can connect.
+| Feature | What it does | Where it lives |
+|--------|----------------|----------------|
+| **Auth** | Email/password login and signup; session cookie. | `lib/auth.ts`, `app/login`, `app/signup`, `middleware.ts` |
+| **Instagram connect** | OAuth with Meta; links Instagram Business/Creator account and Facebook Page. | `lib/instagram.ts`, `app/api/auth/instagram`, callback |
+| **Google Drive connect** | OAuth; browse folders and pick images/videos. | `lib/drive.ts`, `app/api/drive/*`, `components/PickFromDrive.tsx` |
+| **Media library** | Upload images (and converted videos) or add from Drive; select one or many for a post. | `app/api/upload`, `components/MediaUpload.tsx`, store |
+| **Collage** | If multiple images are selected, they are combined into one image (client-side canvas). | `lib/collage.ts`, dashboard `getEffectiveMediaId()` |
+| **Caption & hashtags** | Optional AI generation (OpenAI or Gemini); manual edit. | `app/api/generate-caption`, `components/CaptionEditor.tsx` |
+| **Logo** | Upload PNG; set position and size. Applied to **images only** (at schedule/publish time on server; not on video). | `lib/sharp-logo.ts`, `components/LogoSettings.tsx`, schedule/publish-now routes |
+| **Video conversion** | In-browser FFmpeg.wasm converts video to H.264/AAC MP4 for Instagram (single-video Publish now / Schedule). | `lib/convert-video-browser.ts`, dashboard `handlePublishNow` / `handleSchedule` |
+| **Publish now** | Publish selected media to Instagram (and linked Facebook Page) immediately. | `app/api/publish-now`, dashboard `handlePublishNow` |
+| **Schedule** | Save post with a future time; worker publishes at that time. | `app/api/schedule`, `lib/queue.ts`, `scripts/worker.ts` |
+| **Auto-post** | Worker runs every 10 minutes; for users with recurrence enabled and `next_run_at` in the past, picks one random file from Drive folder, uploads to storage, publishes, then advances `next_run_at`. | `lib/recurrence.ts`, `scripts/worker.ts` |
+| **Posts list** | View scheduled and published posts; retry failed or scheduled posts with “Publish now”. | `app/dashboard` (Scheduled tab), `app/api/posts`, `components/PostCard.tsx` |
 
-   Keep **Valid OAuth Redirect URIs** in sync with the URL users use (localhost for local dev, or your production URL).
+---
 
-3. **Scheduling — Redis + Worker (required for scheduled posts)**
+## Architecture Overview
 
-   Scheduling is powered **only** by Redis + a long-running worker. An always-on machine is required; there is no cron-based fallback.
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│  Browser (Dashboard)                                                     │
+│  - Next.js App Router pages (dashboard, login, signup)                   │
+│  - Zustand store (media, selection, caption, logo, recurrence state)   │
+│  - Video conversion (FFmpeg.wasm) and collage (canvas) run in browser    │
+└───────────────────────────────┬─────────────────────────────────────────┘
+                                │ HTTPS
+                                ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│  Next.js App (Vercel or Node server)                                     │
+│  - API routes: auth, upload, drive, schedule, publish-now, recurrence…   │
+│  - Session auth; reads/writes store (Supabase or file-based)             │
+│  - Enqueues scheduled posts into Redis (BullMQ)                          │
+└───────────────────────────────┬─────────────────────────────────────────┘
+                                │
+         ┌──────────────────────┼──────────────────────┐
+         ▼                      ▼                      ▼
+┌─────────────────┐   ┌─────────────────┐   ┌─────────────────┐
+│  Supabase       │   │  Redis          │   │  Meta / Google  │
+│  (or .data/*)   │   │  (BullMQ queue) │   │  (Instagram,    │
+│  DB + Storage   │   │  Delayed jobs   │   │   Drive APIs)   │
+└─────────────────┘   └────────┬────────┘   └─────────────────┘
+                                │
+                                │ Worker polls queue + recurrence
+                                ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│  Worker (Node, always-on)  npm run worker                                 │
+│  - Consumes BullMQ jobs: publishes scheduled posts at scheduled time     │
+│  - Every 10 min: processRecurrence() → due users → pick from Drive, post  │
+└─────────────────────────────────────────────────────────────────────────┘
+```
 
-   **Setup:**
+- **Web app:** Stateless; all persistence is in Supabase (or file store) and Redis.
+- **Scheduling:** Only the worker publishes at the scheduled time; there is no cron on Vercel. Same Redis URL must be used by the app and the worker.
+- **Media:** Uploaded/converted files go to Supabase Storage bucket `uploads` (when configured) or `public/uploads` locally; Instagram needs a public URL to fetch the media.
 
-   1. **Redis**  
-     - **Local / same machine:** Install Redis (e.g. `redis-server` or Docker) and set `REDIS_URL=redis://localhost:6379` in `.env` or `.env.local`.  
-     - **Remote (e.g. Upstash, Redis Cloud):** Create a Redis instance, get its URL, and set `REDIS_URL=redis://...` in `.env` on **both** the app and the worker machine (same URL).
+---
 
-   2. **Worker (always-on machine)**  
-     - Clone or copy this repo to the machine that will run 24/7.  
-     - Install dependencies: `npm ci`.  
-     - Use the same `.env` (or `.env.local`) as the app, including `REDIS_URL`, `SUPABASE_*` if you use Supabase, and any keys the worker needs.  
-     - Start the worker: `npm run worker`. The worker will exit with a clear error if `REDIS_URL` is missing.  
-     - To run in the background and survive reboots:
-       - **systemd (Linux):** See `scripts/automation-worker.service.example`; copy to `/etc/systemd/system/`, set your user and project path, then `systemctl enable --now automation-worker`.  
-       - **PM2:** `npm i -g pm2 && pm2 start npm --name "automation-worker" -- run worker` then `pm2 save` and `pm2 startup`.
+## Project Structure
 
-   3. **App (Vercel or anywhere)**  
-     - Set `REDIS_URL` in the app’s environment to the **same** Redis URL the worker uses. When users schedule a post, the app enqueues a delayed job into Redis; the worker picks it up and publishes at the exact scheduled time. If `REDIS_URL` is missing or Redis is unreachable, the schedule API returns 503 with a clear message.
+```
+automation/
+├── app/
+│   ├── layout.tsx              # Root layout
+│   ├── page.tsx                # Landing
+│   ├── login/                  # Login page
+│   ├── signup/                 # Signup page
+│   ├── dashboard/              # Main app (media, caption, schedule, recurrence)
+│   ├── privacy-policy/
+│   └── api/                    # API routes
+│       ├── auth/               # login, logout, signup, session, instagram (OAuth)
+│       ├── drive/              # auth, callback, browse, pick, folder, images, status, …
+│       ├── upload/             # POST multipart → store media (image or video/mp4)
+│       ├── schedule/           # POST → save post, enqueue job to Redis
+│       ├── publish-now/       # POST → publish immediately to Instagram (+ FB Page)
+│       ├── posts/              # GET list, POST [id]/publish (retry one post)
+│       ├── recurrence/         # GET/POST recurrence settings (nextRunAt, frequency, times)
+│       ├── queue-status/       # GET Redis up/down
+│       ├── accounts/           # GET connected accounts, POST analyze
+│       ├── media/              # GET media list
+│       ├── generate-caption/  # POST → AI caption/hashtags
+│       └── add-logo/           # POST form → image + logo → image with logo (optional API)
+├── components/
+│   ├── PickFromDrive.tsx       # Drive browser, folder stack, file grid
+│   ├── MediaUpload.tsx         # Upload + media library grid (images/videos)
+│   ├── CaptionEditor.tsx       # Caption + hashtags + generate button
+│   ├── LogoSettings.tsx        # Logo upload, position, size (images only)
+│   ├── PostPreview.tsx        # Preview panel (image or video)
+│   ├── PostCard.tsx            # Scheduled/published post card (list)
+│   ├── SchedulePicker.tsx     # Date/time for single scheduled post
+│   └── ...
+├── lib/
+│   ├── auth.ts                 # Session, getSessionFromRequest
+│   ├── store.ts                # Facade: Supabase or file-based (users, posts, media, accounts, recurrence)
+│   ├── store-supabase.ts       # Supabase implementations
+│   ├── store-file.ts           # File-based (.data/*.json) implementations
+│   ├── instagram.ts            # Meta Graph API: publish image/video, FB Page, OAuth URL
+│   ├── video.ts                # resolveVideoForPublish (returns url + placement "video")
+│   ├── convert-video-browser.ts # FFmpeg.wasm: convert to H.264/AAC (no logo on video)
+│   ├── sharp-logo.ts           # addLogoToImage (server-side, images only)
+│   ├── collage.ts              # buildCollageBlob (client-side, multiple images)
+│   ├── queue.ts                # BullMQ: schedulePost, startWorker (consumes jobs)
+│   ├── recurrence.ts          # processRecurrenceForUser, processRecurrence, computeNextRunAt
+│   ├── drive.ts                # Google Drive: OAuth refresh, list folder, download file
+│   ├── storage.ts              # Supabase Storage upload, public URL
+│   ├── types.ts                # Shared types (User, MediaItem, ScheduledPost, LogoConfig, …)
+│   └── ...
+├── store/
+│   └── useAppStore.ts          # Zustand: media, selection, caption, hashtags, logo, recurrence state
+├── scripts/
+│   ├── worker.ts               # Entry: startWorker() + setInterval(processRecurrence, 10 min)
+│   └── automation-worker.service.example  # systemd example
+├── supabase/
+│   ├── migrations/             # SQL migrations (schema, recurrence, storage)
+│   └── sql/run-all-new-migrations.sql
+├── middleware.ts               # Protects /dashboard; redirects unauthenticated to /login
+├── package.json
+└── README.md
+```
 
-   **Result:** Scheduled posts publish at the exact time. If the worker or Redis is down, posts stay "scheduled"; use **Publish now** on a card to send that post immediately.
+---
 
-4. **Publish to Instagram (local vs production)**
+## How to Start
 
-   Instagram needs a **public** image URL. On **localhost** the image URL is not reachable by Meta, so **Publish now** will fail. Use **production** for posting:
+### Prerequisites
 
-   - **Local dev:** `NEXT_PUBLIC_APP_URL=http://localhost:3000` — use the app for everything except publishing to Instagram (or test publishing after deploying).
-   - **Production (Vercel):** Deploy the app and set `NEXT_PUBLIC_APP_URL=https://automation-aditya.vercel.app` in Vercel env. Then image URLs are public and **Publish now** / scheduled posts work.
+- Node.js 18+
+- (Optional) Redis — required for scheduling and for the worker
+- (Optional) Supabase project — recommended for production (DB + Storage)
 
-5. **Google Drive (optional)**
+### 1. Install and run the app
 
-   - In [Google Cloud Console](https://console.cloud.google.com/apis/credentials) create OAuth 2.0 Client ID (Web application).
-   - **Redirect URI must match exactly** (Error 400 `redirect_uri_mismatch` otherwise). Add **both** to **Authorized redirect URIs**: **Local** `http://localhost:3000/api/drive/callback` · **Production** `https://automation-aditya.vercel.app/api/drive/callback` (no trailing slash). Or open your app and visit **`/api/drive/redirect-uri`** to see the exact URI for the current host.
-   - Enable the **Google Drive API** for the project.
-   - Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in `.env.local`. Restart the dev server.
-   - On the dashboard, click **Connect Google Drive**, then optionally paste a folder link and **Save folder**. Use **Load images** and **Pick random** or click an image to use it for the post (no need to re-upload).
+```bash
+git clone <repo>
+cd automation
+npm install
+cp .env.example .env
+# Edit .env or .env.local (see Environment Variables)
+npm run dev
+```
 
-   **“Access blocked” or “This app isn’t verified” when users connect Drive**
+Open [http://localhost:3000](http://localhost:3000). Log in (or sign up) using the password set in `AUTH_PASSWORD`.
 
-   If the OAuth consent screen is in **Testing** mode, only users listed under **Test users** in Google Cloud Console can sign in. Others get “Access blocked” or similar.
+### 2. Run the worker (scheduled and auto-posts)
 
-   - **Option A – Allow specific users:** In Google Cloud Console → **OAuth consent screen** → **Test users** → add each user’s Google email. They can then connect Drive.
-   - **Option B – Allow any user:** Publish the app (set OAuth consent screen to **Production** and complete verification if required), or add each user as a test user.
+The worker must run on a machine that has the same env (especially `REDIS_URL`) as the app. It does not run on Vercel.
 
-6. **Deploying to Vercel**
+```bash
+# Same directory, same .env
+npm run worker
+```
 
-   Vercel’s serverless environment has a **read-only filesystem**. The app detects Vercel (`VERCEL=1`) and uses `/tmp/.data` for the file-based store so **login and signup work** (no more `ENOENT: mkdir '.data'`).
+- Starts BullMQ worker: consumes scheduled-post jobs and publishes at the right time.
+- Every 10 minutes runs `processRecurrence()`: for each user with recurrence enabled and `next_run_at` in the past, picks one file from the Drive folder, uploads it, publishes to Instagram, then advances `next_run_at`.
 
-   - Set **Environment variables** in the Vercel project: `META_APP_ID`, `META_APP_SECRET`, `AUTH_SECRET`, `AUTH_PASSWORD`, `NEXT_PUBLIC_APP_URL`, and optionally `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GEMINI_API_KEY`, `REDIS_URL` (required for scheduling; same URL as the worker). Vercel is used only for the web app and API; scheduling runs on Redis + worker on an always-on machine.
-   - In Meta and Google OAuth settings, add **production** redirect URIs: `https://automation-aditya.vercel.app/api/auth/instagram/callback` and `https://automation-aditya.vercel.app/api/drive/callback`.
+To keep it running after logout:
 
-   **Limitations on Vercel (without Supabase):** `/tmp` is ephemeral and not shared across serverless instances. User and post data may not persist reliably. **Use Supabase** (see below) so all app data is stored in the database and persists on Vercel. Image uploads still write to `public/uploads`, which is read-only on Vercel—for production you may also need object storage (e.g. Vercel Blob).
+- **Linux (systemd):** Use `scripts/automation-worker.service.example`.
+- **PM2:** `pm2 start npm --name "automation-worker" -- run worker`, then `pm2 save` and `pm2 startup`.
 
-7. **Supabase (optional, recommended for Vercel)**
+### 3. Production build
 
-   When `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are set, the app stores **all data** in Supabase (users, posts, media metadata, Instagram/Drive accounts) instead of local files. This gives persistent storage on Vercel and multi-instance consistency.
+```bash
+npm run build
+npm run start
+```
 
-   - Create a project at [Supabase](https://supabase.com) → **Settings** → **API**: copy **Project URL** and **service_role** key (keep it secret).
-   - In the Supabase **SQL Editor**, run the contents of `supabase/migrations/20260218000000_automation_schema.sql` to create the tables.
-   - In `.env.local` (or Vercel env vars) set:
-     - `SUPABASE_URL=https://your-project.supabase.co`
-     - `SUPABASE_SERVICE_ROLE_KEY=your_service_role_key`
-   - Restart the dev server (or redeploy on Vercel). Login, signup, posts, and connections will then be stored in Supabase.
-   - **For images (Drive pick, upload, Instagram):** Create a Storage bucket and policies so Select/Upload work and Instagram can load image URLs:
-     1. Supabase → **Storage** → **New bucket** → Name: `uploads` → turn **Public bucket** ON → **Create**.
-     2. In **SQL Editor**, run the contents of `supabase/migrations/20260218100000_storage_uploads_bucket.sql` (this adds read/upload policies for `uploads`). If you see "Failed to store image" or "Bucket not found", the bucket or policies are missing.
+Deploy the app (e.g. Vercel); run the worker elsewhere with the same `REDIS_URL` and Supabase (if used).
 
-   **If you see "Could not find the table 'public.xxx' in the schema cache":** The migration has not been run. In [Supabase](https://supabase.com) → your project → **SQL Editor** → New query, paste the full contents of `supabase/migrations/20260218000000_automation_schema.sql` and click **Run**. Then reload the app.
+---
 
-## Scripts
+## How to Manage & Configure
 
-- `npm run dev` — Next.js dev server
-- `npm run build` / `npm run start` — Production
-- **`npm run worker`** — Queue worker for scheduled posts (Redis + worker, machine always on). Run on an always-on machine with `REDIS_URL` set; loads `.env.local` automatically. Keeps running and publishes posts at their scheduled time. If this isn’t running, scheduled posts are saved but never published until you run the worker or use **Publish now** on a card.
+### Meta (Instagram + Facebook Page)
 
-## Architecture (MVP)
+1. Create an app at [Meta for Developers](https://developers.facebook.com/).
+2. Add **Instagram Graph API** and **Facebook Login**.
+3. In Facebook Login → Settings, set **Valid OAuth Redirect URIs** to:
+   - Local: `http://localhost:3000/api/auth/instagram/callback`
+   - Production: `https://<your-domain>/api/auth/instagram/callback`
+4. Use an Instagram **Business** or **Creator** account linked to a **Facebook Page**.
+5. Set `META_APP_ID`, `META_APP_SECRET`, and `NEXT_PUBLIC_APP_URL` (e.g. `http://localhost:3000` or your production URL).
 
-**Scheduling flow:** User → App (Vercel) → Redis → Worker (always-on machine) → Social API (Instagram/Facebook).
+If the app is in **Development** mode, only **Testers** can connect Instagram; add testers in App roles or switch to Live after review.
 
-- **Vercel:** Hosts the web app and API only. No built-in cron; scheduling is not done on Vercel.
-- **Frontend:** Next.js App Router, Tailwind, Framer Motion, Zustand. Uploads via `fetch("/api/upload", ...)` only — no Supabase client on the frontend.
-- **Supabase:** Browser → API route → **service role** (`getSupabase()`) → Supabase (DB + Storage). Never call Supabase from the frontend (anon role would hit RLS and fail).
-- **API routes:** `/api/upload`, `/api/drive/pick`, `/api/generate-caption`, `/api/add-logo`, `/api/schedule`, `/api/posts`, `/api/accounts`, `/api/auth/instagram`, `/api/auth/instagram/callback`
-- **Storage:** Supabase (when configured) or file-based (`.data/*.json`) for users, posts, media metadata, and connected accounts. Images: Supabase Storage bucket `uploads` (via API only) or `public/uploads/` locally.
-- **Scheduling:** Redis + worker only. App enqueues a delayed job into Redis when the user schedules a post. Worker runs on an always-on machine, consumes the queue, and publishes at the exact scheduled time. Same `REDIS_URL` for app and worker.
+### Google Drive
 
-## Roadmap
+1. In [Google Cloud Console](https://console.cloud.google.com/apis/credentials) create an OAuth 2.0 Client ID (Web application).
+2. Add **Authorized redirect URIs**: `http://localhost:3000/api/drive/callback` and your production callback (or use `/api/drive/redirect-uri` in the app to see the exact URI).
+3. Enable **Google Drive API**.
+4. Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in env.
 
-- **Phase 2:** Collage automation, video generator, Google Drive sync
-- **Phase 3:** Full AI creative system, niche detection, post-uniqueness and regeneration
+### Supabase (recommended for production)
 
-## Env reference
+1. Create a project at [Supabase](https://supabase.com).
+2. In SQL Editor, run migrations in order:
+   - `supabase/migrations/20260218000000_automation_schema.sql`
+   - `supabase/migrations/20260218100000_storage_uploads_bucket.sql` (and any later migrations, or `supabase/sql/run-all-new-migrations.sql` if it includes all new changes).
+3. Create Storage bucket `uploads` and set it to **Public** (or apply the storage migration that creates it and policies).
+4. Set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` in env.
+
+### Redis (scheduling + worker)
+
+- Use a Redis instance (local or e.g. Upstash, Redis Cloud).
+- Set `REDIS_URL` in **both** the Next.js app and the worker process. If `REDIS_URL` is missing, the worker exits and the schedule API returns 503.
+
+---
+
+## Code & Functionality Deep Dive
+
+### Authentication
+
+- **lib/auth.ts:** Session creation/validation; password check against stored hash. Session stored in an encrypted cookie.
+- **middleware.ts:** For `/dashboard`, checks session; redirects to `/login` if missing.
+- **app/api/auth/login, signup, logout, session:** Handle login, signup, logout, and session read; all use the store (Supabase or file) for users.
+
+### Dashboard flow (create post)
+
+1. User selects media (upload or from Drive). Multiple images → collage is built in the browser and uploaded as one image.
+2. Single video → on Publish now / Schedule, the app runs **convert-video-browser** (FFmpeg.wasm) to produce H.264/AAC MP4, uploads that file via `/api/upload`, then uses the new media ID for publish or schedule. Logo is **not** applied to video.
+3. Caption/hashtags: manual or from `/api/generate-caption` (OpenAI or Gemini).
+4. Logo: configured in LogoSettings; applied **only for images** in `publish-now` and `schedule` routes via `addLogoToImage` (Sharp). Video posts are published without logo.
+5. **Publish now:** `POST /api/publish-now` with `mediaId`, caption, hashtags, etc. Resolves media URL (and video placement), applies logo for images, then calls `publishToInstagram` and optionally `publishToFacebookPage`.
+6. **Schedule:** `POST /api/schedule` with same payload. Saves post to DB, then `schedulePost(post, at)` enqueues a delayed job in Redis. Worker later runs the job: loads post, resolves media (by `mediaId` when present so converted video is used), publishes, marks post as published.
+
+### Scheduling (BullMQ)
+
+- **lib/queue.ts:** `schedulePost(post, runAt)` adds a job with `delay` until `runAt`. Worker’s job handler: loads post from DB, checks status is `scheduled`, resolves media URL (from media record when `mediaId` set), calls `publishToInstagram` / `publishToFacebookPage`, then updates post to `published`.
+- **scripts/worker.ts:** Calls `startWorker()` from `lib/queue` and runs `processRecurrence()` every 10 minutes.
+
+### Recurrence (auto-post)
+
+- **lib/recurrence.ts:** `getDueRecurrenceSettings(now)` returns users with `enabled` and `next_run_at <= now`. For each, `processRecurrenceForUser`: refreshes Drive token, lists files in folder (`settings.driveFolderId` or Drive account’s `folderId`), excludes already-posted IDs (round-robin), picks one random file, downloads it, uploads to Supabase Storage, creates media record, publishes to Instagram (and FB Page), saves post, advances `next_run_at` via `computeNextRunAtWithTimes` (rotates through 3 time slots).
+- **GET /api/recurrence:** If `nextRunAt` is in the past and recurrence is enabled, returns a **computed** next run time for display only (so “Next post at” shows the next date); does not persist it so the worker still sees the old due time and can run.
+- Dashboard sends `driveFolderId` (current Drive folder) when saving recurrence so the worker uses that folder.
+
+### Video handling
+
+- **lib/video.ts:** `resolveVideoForPublish(url)` returns `{ url, placement: "video" }` (no server-side conversion).
+- **lib/convert-video-browser.ts:** Used only from the dashboard. Converts a single video to H.264/AAC MP4 (no logo). Result is uploaded via `/api/upload` and that media ID is used for publish/schedule. Worker and publish-now then use the stored URL (converted file) so Instagram accepts it.
+
+### Instagram API
+
+- **lib/instagram.ts:** Creates container with `media_type=VIDEO` or `REELS` and `video_url`, or `image_url` for images. Uses Graph API v25. On “Unknown media type” for VIDEO, retries with REELS. Polls container status; on ERROR, maps known subcodes to user-facing messages (e.g. format not supported, URL not fetchable).
+
+---
+
+## API Reference
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/auth/session` | Current session |
+| POST | `/api/auth/login` | Log in (email + password) |
+| POST | `/api/auth/signup` | Create account |
+| POST | `/api/auth/logout` | Log out |
+| GET | `/api/auth/instagram` | Redirect to Meta OAuth |
+| GET | `/api/auth/instagram/callback` | OAuth callback; save account |
+| POST | `/api/upload` | Upload image or video (multipart); returns media item |
+| GET | `/api/drive/status` | Drive connection status |
+| GET | `/api/drive/browse` | List folder contents |
+| POST | `/api/drive/pick` | Pick file from Drive; add to media library |
+| POST | `/api/schedule` | Create scheduled post; enqueue job (requires REDIS_URL) |
+| POST | `/api/publish-now` | Publish immediately |
+| GET | `/api/posts` | List posts for current user |
+| POST | `/api/posts/[id]/publish` | Publish one scheduled/failed post now |
+| GET | `/api/recurrence` | Get recurrence settings (nextRunAt may be computed if past) |
+| POST | `/api/recurrence` | Save recurrence (enabled, frequency, postTimes, driveFolderId) |
+| GET | `/api/queue-status` | Redis up/down |
+| GET | `/api/accounts` | Connected Instagram/account info |
+| POST | `/api/generate-caption` | AI caption/hashtags (OpenAI or Gemini) |
+| POST | `/api/add-logo` | (Optional) Image + logo file → image with logo |
+
+---
+
+## Database (Supabase)
+
+When Supabase is configured, the app uses these main tables:
+
+- **users** — App users (id, email, password_hash).
+- **posts** — Scheduled/published posts (media_id, media_url, caption, hashtags, scheduled_at, status, media_type, logo_config, …).
+- **media** — Uploaded or Drive-picked media (url, mime_type, drive_file_id, …).
+- **accounts** — Instagram (Meta) account per user (access_token, instagram_business_account_id, facebook_page_id, …).
+- **drive_accounts** — Drive OAuth per user (access_token, refresh_token, folder_id).
+- **drive_posted_round** — Tracks which Drive file IDs were used per folder (for recurrence round-robin).
+- **recurrence_settings** — Auto-post (enabled, frequency, next_run_at, post_times, next_time_index, drive_folder_id).
+
+Storage bucket **uploads** is used for uploaded and converted media; public read so Instagram can fetch URLs.
+
+---
+
+## Environment Variables
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `NEXT_PUBLIC_APP_URL` | Yes (for OAuth) | Base URL of the app |
-| `META_APP_ID` | Yes (for Instagram) | Meta app ID |
-| `META_APP_SECRET` | Yes (for Instagram) | Meta app secret |
-| `OPENAI_API_KEY` | No | Caption/hashtag generation (fallback if missing) |
-| `REDIS_URL` | Yes (for scheduling) | Redis URL for BullMQ. Required for scheduling; use the same URL in the app and the worker. If missing, the worker exits with an error; the schedule API returns 503. |
-| `GOOGLE_CLIENT_ID` | No (for Drive) | Google OAuth client ID for Drive |
-| `GOOGLE_CLIENT_SECRET` | No (for Drive) | Google OAuth client secret |
-| `AUTH_PASSWORD` | Yes (for dashboard) | Password for `/login` |
+| `NEXT_PUBLIC_APP_URL` | Yes (OAuth) | App base URL (e.g. `http://localhost:3000`, `https://your-app.vercel.app`) |
+| `META_APP_ID` | Yes (Instagram) | Meta app ID |
+| `META_APP_SECRET` | Yes (Instagram) | Meta app secret |
+| `AUTH_PASSWORD` | Yes | Password for login (or use your own auth) |
 | `AUTH_SECRET` | No | Secret for signing session cookie |
+| `REDIS_URL` | Yes (scheduling) | Redis URL for BullMQ (app + worker must use same URL) |
+| `SUPABASE_URL` | No (recommended) | Supabase project URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | No | Supabase service role key (server-side only) |
+| `GOOGLE_CLIENT_ID` | No (Drive) | Google OAuth client ID |
+| `GOOGLE_CLIENT_SECRET` | No (Drive) | Google OAuth client secret |
+| `OPENAI_API_KEY` | No | OpenAI for caption/hashtag generation |
+| `GEMINI_API_KEY` | No | Google Gemini for caption/hashtag (alternative) |
+
+---
+
+## Troubleshooting
+
+- **“Media container failed” / “Invalid parameter”**  
+  Usually video format or URL. Use single-video flow so the app converts to H.264/AAC and uploads; ensure media URL is public (Supabase public bucket, not localhost). See container error subcodes in `lib/instagram.ts` (e.g. format not supported, URL not fetchable).
+
+- **Scheduled post never publishes**  
+  Worker must be running and `REDIS_URL` must be set (same as app). Check queue status on dashboard; run `npm run worker` on an always-on machine.
+
+- **“Next post at” date not updating**  
+  GET recurrence now returns a computed next run when the stored one is in the past (display only). Dashboard also refetches recurrence every 60s when auto-post is enabled. If the worker runs and advances `next_run_at`, the next refetch will show the new time.
+
+- **Auto-post not picking media**  
+  Auto-post uses **only** the connected Drive folder. Connect Drive, open a folder that contains images/videos, and save recurrence (so `driveFolderId` is set). Worker must be running.
+
+- **Logo not on video**  
+  Logo is applied to images only (Sharp on server). Video posts are published without logo to avoid Instagram rejection.
+
+- **OAuth redirect errors**  
+  Ensure Meta and Google redirect URIs match exactly (no trailing slash, correct host). Use `/api/drive/redirect-uri` to see the exact Drive callback URL.
+
+---
+
+## Scripts
+
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Next.js dev server |
+| `npm run build` | Production build |
+| `npm run start` | Run production server |
+| **`npm run worker`** | Start queue worker + recurrence (requires REDIS_URL; run on always-on machine) |

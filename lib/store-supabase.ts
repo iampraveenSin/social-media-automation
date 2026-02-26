@@ -332,6 +332,10 @@ function rowToRecurrence(r: Record<string, unknown>): RecurrenceSettings {
     driveFolderId: (r.drive_folder_id as string | null) ?? null,
     postTimes,
     nextTimeIndex: typeof r.next_time_index === "number" ? r.next_time_index : undefined,
+    niche: (r.niche as string | null) ?? null,
+    topic: (r.topic as string | null) ?? null,
+    vibe: (r.vibe as string | null) ?? null,
+    audience: (r.audience as string | null) ?? null,
   };
 }
 
@@ -359,6 +363,10 @@ export async function saveRecurrenceSettings(appUserId: string, settings: Recurr
   };
   if (settings.postTimes != null) row.post_times = JSON.stringify(settings.postTimes);
   if (settings.nextTimeIndex != null) row.next_time_index = settings.nextTimeIndex;
+  if (settings.niche !== undefined) row.niche = settings.niche ?? null;
+  if (settings.topic !== undefined) row.topic = settings.topic ?? null;
+  if (settings.vibe !== undefined) row.vibe = settings.vibe ?? null;
+  if (settings.audience !== undefined) row.audience = settings.audience ?? null;
   const { error } = await sb
     .from("recurrence_settings")
     .upsert(row, { onConflict: "app_user_id" });

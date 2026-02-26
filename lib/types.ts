@@ -119,4 +119,9 @@ export interface RecurrenceSettings {
   postTimes?: string[];
   /** Index into postTimes for the next run (round-robin). */
   nextTimeIndex?: number;
+  /** Caption preferences for AI-generated captions on auto-post (same as manual/scheduled). */
+  niche?: string | null;
+  topic?: string | null;
+  vibe?: string | null;
+  audience?: string | null;
 }

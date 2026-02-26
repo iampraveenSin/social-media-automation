@@ -82,6 +82,10 @@ export default function DashboardPage() {
     frequency: RecurrenceFrequency;
     nextRunAt: string | null;
     postTimes: string[];
+    niche?: string | null;
+    topic?: string | null;
+    vibe?: string | null;
+    audience?: string | null;
   }>({ enabled: false, frequency: "daily", nextRunAt: null, postTimes: DEFAULT_POST_TIMES });
   const [recurrenceSaving, setRecurrenceSaving] = useState(false);
   const redirectingToLogin = useRef(false);
@@ -159,7 +163,7 @@ export default function DashboardPage() {
         const text = await r.text();
         if (!text) return null;
         try {
-          return JSON.parse(text) as { enabled?: boolean; frequency?: RecurrenceFrequency; nextRunAt?: string | null; postTimes?: string[] };
+          return JSON.parse(text) as { enabled?: boolean; frequency?: RecurrenceFrequency; nextRunAt?: string | null; postTimes?: string[]; niche?: string | null; topic?: string | null; vibe?: string | null; audience?: string | null };
         } catch {
           return null;
         }
@@ -171,6 +175,10 @@ export default function DashboardPage() {
             frequency: d.frequency ?? "daily",
             nextRunAt: d.nextRunAt ?? null,
             postTimes: Array.isArray(d.postTimes) && d.postTimes.length > 0 ? d.postTimes : DEFAULT_POST_TIMES,
+            niche: d.niche ?? null,
+            topic: d.topic ?? null,
+            vibe: d.vibe ?? null,
+            audience: d.audience ?? null,
           });
         }
       })
@@ -629,10 +637,10 @@ export default function DashboardPage() {
                                   method: "POST",
                                   headers: { "Content-Type": "application/json" },
                                   credentials: "include",
-                                  body: JSON.stringify({ enabled: en, frequency: recurrence.frequency, postTimes: recurrence.postTimes, driveFolderId: drive.folderId ?? undefined }),
+                                  body: JSON.stringify({ enabled: en, frequency: recurrence.frequency, postTimes: recurrence.postTimes, driveFolderId: drive.folderId ?? undefined, niche: niche || undefined, topic: topic || undefined, vibe: vibe || undefined, audience: audience || undefined }),
                                 });
                                 const text = await r.text();
-                                let d: { enabled?: boolean; frequency?: RecurrenceFrequency; nextRunAt?: string | null; postTimes?: string[]; error?: string } = {};
+                                let d: { enabled?: boolean; frequency?: RecurrenceFrequency; nextRunAt?: string | null; postTimes?: string[]; niche?: string | null; topic?: string | null; vibe?: string | null; audience?: string | null; error?: string } = {};
                                 try {
                                   if (text) d = JSON.parse(text) as typeof d;
                                 } catch {
@@ -645,6 +653,10 @@ export default function DashboardPage() {
                                     frequency: d.frequency ?? p.frequency,
                                     nextRunAt: d.nextRunAt ?? null,
                                     postTimes: Array.isArray(d.postTimes) && d.postTimes.length > 0 ? d.postTimes : p.postTimes,
+                                    niche: d.niche ?? p.niche,
+                                    topic: d.topic ?? p.topic,
+                                    vibe: d.vibe ?? p.vibe,
+                                    audience: d.audience ?? p.audience,
                                   }));
                                 } else {
                                   setRecurrence((p) => ({ ...p, enabled: !en }));
@@ -671,16 +683,16 @@ export default function DashboardPage() {
                                 method: "POST",
                                 headers: { "Content-Type": "application/json" },
                                 credentials: "include",
-                                body: JSON.stringify({ enabled: recurrence.enabled, frequency: freq, postTimes: recurrence.postTimes, driveFolderId: drive.folderId ?? undefined }),
+                                body: JSON.stringify({ enabled: recurrence.enabled, frequency: freq, postTimes: recurrence.postTimes, driveFolderId: drive.folderId ?? undefined, niche: niche || undefined, topic: topic || undefined, vibe: vibe || undefined, audience: audience || undefined }),
                               });
                               const text = await r.text();
-                              let d: { frequency?: RecurrenceFrequency; nextRunAt?: string | null; error?: string } = {};
+                              let d: { frequency?: RecurrenceFrequency; nextRunAt?: string | null; niche?: string | null; topic?: string | null; vibe?: string | null; audience?: string | null; error?: string } = {};
                               try {
                                 if (text) d = JSON.parse(text) as typeof d;
                               } catch {
                                 setError("Invalid response from server");
                               }
-                              if (r.ok) setRecurrence((p) => ({ ...p, frequency: d.frequency ?? freq, nextRunAt: d.nextRunAt ?? null }));
+                              if (r.ok) setRecurrence((p) => ({ ...p, frequency: d.frequency ?? freq, nextRunAt: d.nextRunAt ?? null, niche: d.niche ?? p.niche, topic: d.topic ?? p.topic, vibe: d.vibe ?? p.vibe, audience: d.audience ?? p.audience }));
                               else setError(d.error ?? "Failed to save auto-post");
                             } catch (err) {
                               setError(err instanceof Error ? err.message : "Failed to save auto-post");
@@ -724,16 +736,16 @@ export default function DashboardPage() {
                                       method: "POST",
                                       headers: { "Content-Type": "application/json" },
                                       credentials: "include",
-                                      body: JSON.stringify({ enabled: recurrence.enabled, frequency: recurrence.frequency, postTimes, driveFolderId: drive.folderId ?? undefined }),
+                                      body: JSON.stringify({ enabled: recurrence.enabled, frequency: recurrence.frequency, postTimes, driveFolderId: drive.folderId ?? undefined, niche: niche || undefined, topic: topic || undefined, vibe: vibe || undefined, audience: audience || undefined }),
                                     });
                                     const text = await r.text();
-                                    let d: { nextRunAt?: string | null; postTimes?: string[]; error?: string } = {};
+                                    let d: { nextRunAt?: string | null; postTimes?: string[]; niche?: string | null; topic?: string | null; vibe?: string | null; audience?: string | null; error?: string } = {};
                                     try {
                                       if (text) d = JSON.parse(text) as typeof d;
                                     } catch {
                                       /* ignore */
                                     }
-                                    if (r.ok) setRecurrence((p) => ({ ...p, nextRunAt: d.nextRunAt ?? p.nextRunAt, postTimes: Array.isArray(d.postTimes) && d.postTimes.length > 0 ? d.postTimes : postTimes }));
+                                    if (r.ok) setRecurrence((p) => ({ ...p, nextRunAt: d.nextRunAt ?? p.nextRunAt, postTimes: Array.isArray(d.postTimes) && d.postTimes.length > 0 ? d.postTimes : postTimes, niche: d.niche ?? p.niche, topic: d.topic ?? p.topic, vibe: d.vibe ?? p.vibe, audience: d.audience ?? p.audience }));
                                     else setError(d.error ?? "Failed to save times");
                                   } catch {
                                     setError("Failed to save times");
@@ -747,6 +759,7 @@ export default function DashboardPage() {
                           ))}
                         </div>
                         <p className="text-xs text-stone-500 mt-1">Only 1 post per day (or per week/month). That post goes out at one of these times in rotation: 1st at Time 1, 2nd at Time 2, 3rd at Time 3, then repeat. Default: 9 AM, 2 PM, 7 PM.</p>
+                        <p className="text-xs text-stone-500 mt-1">Auto-post uses the same AI caption pipeline as Post Now and Schedule. Captions use the topic, vibe and audience from the form above (saved when you update auto-post settings).</p>
                       </div>
                     </div>
                   </div>
