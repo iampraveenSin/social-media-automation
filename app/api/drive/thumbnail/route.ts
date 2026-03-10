@@ -24,7 +24,8 @@ export async function GET(request: NextRequest) {
     }
     const result = await getDriveThumbnail(accessToken, fileId);
     if (!result) return new NextResponse(null, { status: 404 });
-    return new NextResponse(result.buffer, {
+    const body = new Uint8Array(result.buffer);
+    return new NextResponse(body, {
       headers: {
         "Content-Type": result.mimeType,
         "Cache-Control": "private, max-age=300",
