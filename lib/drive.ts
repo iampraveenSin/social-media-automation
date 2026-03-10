@@ -147,6 +147,108 @@ export async function listMediaInFolder(
   return { files: data.files ?? [] };
 }
 
+const PAGE_SIZE = 100;
+const MIME_CONDITIONS = MEDIA_MIMES.map((m) => `mimeType='${m}'`).join(" or ");
+
+/** Fetch one page of media files in a folder. */
+async function listMediaPage(
+  accessToken: string,
+  folderId: string,
+  pageToken?: string
+): Promise<{ files: DriveFileItem[]; nextPageToken?: string; error?: string }> {
+  const parentQ = folderId === "root" ? "'root' in parents" : `'${folderId}' in parents`;
+  const q = `${parentQ} and (${MIME_CONDITIONS}) and trashed=false`;
+  const params = new URLSearchParams({
+    q,
+    fields: "nextPageToken,files(id,name,mimeType,thumbnailLink,webViewLink)",
+    pageSize: String(PAGE_SIZE),
+    orderBy: "modifiedTime desc",
+    supportsAllDrives: "true",
+    includeItemsFromAllDrives: "true",
+  });
+  if (pageToken) params.set("pageToken", pageToken);
+  const res = await fetch(`${DRIVE_API}/files?${params.toString()}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const data = (await res.json()) as {
+    files?: DriveFileItem[];
+    nextPageToken?: string;
+    error?: { message?: string };
+  };
+  if (!res.ok) return { files: [], error: data.error?.message ?? `Drive API error ${res.status}` };
+  return { files: data.files ?? [], nextPageToken: data.nextPageToken };
+}
+
+/** Fetch one page of subfolder IDs in a folder. */
+async function listSubfolderIdsPage(
+  accessToken: string,
+  folderId: string,
+  pageToken?: string
+): Promise<{ folderIds: string[]; nextPageToken?: string; error?: string }> {
+  const parentQ = folderId === "root" ? "'root' in parents" : `'${folderId}' in parents`;
+  const q = `${parentQ} and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+  const params = new URLSearchParams({
+    q,
+    fields: "nextPageToken,files(id)",
+    pageSize: String(PAGE_SIZE),
+    supportsAllDrives: "true",
+    includeItemsFromAllDrives: "true",
+  });
+  if (pageToken) params.set("pageToken", pageToken);
+  const res = await fetch(`${DRIVE_API}/files?${params.toString()}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const data = (await res.json()) as {
+    files?: { id: string }[];
+    nextPageToken?: string;
+    error?: { message?: string };
+  };
+  if (!res.ok) return { folderIds: [], error: data.error?.message ?? `Drive API error ${res.status}` };
+  const folderIds = (data.files ?? []).map((f) => f.id).filter(Boolean);
+  return { folderIds, nextPageToken: data.nextPageToken };
+}
+
+/** List all media files in a folder and all its subfolders recursively. No duplicate file IDs. */
+export async function listMediaInFolderRecursive(
+  accessToken: string,
+  folderId: string
+): Promise<ListImagesResult> {
+  const seen = new Set<string>();
+  const files: DriveFileItem[] = [];
+
+  async function collectInFolder(currentFolderId: string): Promise<string | undefined> {
+    let pageToken: string | undefined;
+    do {
+      const page = await listMediaPage(accessToken, currentFolderId, pageToken);
+      if (page.error) return page.error;
+      for (const f of page.files) {
+        if (f.id && !seen.has(f.id)) {
+          seen.add(f.id);
+          files.push(f);
+        }
+      }
+      pageToken = page.nextPageToken;
+    } while (pageToken);
+
+    let folderPageToken: string | undefined;
+    do {
+      const folderPage = await listSubfolderIdsPage(accessToken, currentFolderId, folderPageToken);
+      if (folderPage.error) return folderPage.error;
+      for (const subId of folderPage.folderIds) {
+        const err = await collectInFolder(subId);
+        if (err) return err;
+      }
+      folderPageToken = folderPage.nextPageToken;
+    } while (folderPageToken);
+
+    return undefined;
+  }
+
+  const err = await collectInFolder(folderId);
+  if (err) return { files: [], error: err };
+  return { files };
+}
+
 /** @deprecated Use listMediaInFolder. Kept for compatibility. */
 export const listImagesInFolder = listMediaInFolder;
 
@@ -234,5 +336,46 @@ export function parseDriveFolderId(input: string): string | null {
   const match = trimmed.match(/[/]folders[/]([a-zA-Z0-9_-]+)/);
   if (match) return match[1];
   if (/^[a-zA-Z0-9_-]+$/.test(trimmed)) return trimmed;
+  return null;
+}
+
+/**
+ * Fetch thumbnail for a Drive file. Uses contentHints.thumbnail (base64) when present,
+ * otherwise fetches thumbnailLink with Bearer token. Returns null if no thumbnail.
+ */
+export async function getDriveThumbnail(
+  accessToken: string,
+  fileId: string
+): Promise<{ buffer: Buffer; mimeType: string } | null> {
+  const metaRes = await fetch(
+    `${DRIVE_API}/files/${fileId}?fields=contentHints(thumbnail(image,mimeType)),thumbnailLink`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  if (!metaRes.ok) return null;
+  const meta = (await metaRes.json()) as {
+    contentHints?: { thumbnail?: { image?: string; mimeType?: string } };
+    thumbnailLink?: string;
+  };
+
+  if (meta.contentHints?.thumbnail?.image) {
+    const buf = Buffer.from(meta.contentHints.thumbnail.image, "base64");
+    const mimeType = meta.contentHints.thumbnail.mimeType ?? "image/jpeg";
+    return { buffer: buf, mimeType };
+  }
+
+  if (meta.thumbnailLink) {
+    const thumbRes = await fetch(meta.thumbnailLink, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      redirect: "follow",
+    });
+    if (!thumbRes.ok) return null;
+    const arrayBuffer = await thumbRes.arrayBuffer();
+    const contentType = thumbRes.headers.get("content-type") ?? "image/jpeg";
+    return {
+      buffer: Buffer.from(arrayBuffer),
+      mimeType: contentType.split(";")[0].trim() || "image/jpeg",
+    };
+  }
+
   return null;
 }

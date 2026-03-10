@@ -101,12 +101,24 @@ export default function PrivacyPolicyPage() {
           </p>
         </div>
 
-        <div className="mt-12">
+        <div className="mt-12 flex flex-wrap gap-6">
           <Link
             href="/"
             className="inline-flex items-center text-amber-400 hover:text-amber-300 transition"
           >
             ← Back to home
+          </Link>
+          <Link
+            href="/terms-of-service"
+            className="inline-flex items-center text-white/70 hover:text-white transition"
+          >
+            Terms of Service
+          </Link>
+          <Link
+            href="/data-deletion"
+            className="inline-flex items-center text-white/70 hover:text-white transition"
+          >
+            Data Deletion
           </Link>
         </div>
       </main>

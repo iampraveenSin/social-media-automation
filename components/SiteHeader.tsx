@@ -19,6 +19,12 @@ export function SiteHeader() {
           <Link href="/privacy-policy" className="text-white/70 hover:text-white transition">
             Privacy
           </Link>
+          <Link href="/terms-of-service" className="text-white/70 hover:text-white transition">
+            Terms
+          </Link>
+          <Link href="/data-deletion" className="text-white/70 hover:text-white transition">
+            Data Deletion
+          </Link>
           <Link href="/login" className="text-white/70 hover:text-white transition">
             Log in
           </Link>

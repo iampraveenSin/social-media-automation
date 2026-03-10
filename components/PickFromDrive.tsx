@@ -3,6 +3,9 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { useAppStore } from "@/store/useAppStore";
+import { SELECTION_MESSAGE_MULTI_VIDEO_GIF } from "@/store/useAppStore";
+
+/** Pick from Drive: multi-select for images only. Store enforces video/GIF rules. */
 
 interface DriveFolderItem {
   id: string;
@@ -24,7 +27,7 @@ interface PickFromDriveProps {
 }
 
 export function PickFromDrive({ connected, folderId }: PickFromDriveProps) {
-  const { addMedia, setSelectedMediaId, addSelectedMediaId } = useAppStore();
+  const { addMedia, setSelectedMediaId, setSelectedMediaIds, addSelectedMediaId, selectedMediaIds, media, setSelectionMessage } = useAppStore();
   const [folders, setFolders] = useState<DriveFolderItem[]>([]);
   const [files, setFiles] = useState<DriveFileItem[]>([]);
   const [folderStack, setFolderStack] = useState<{ id: string; name: string }[]>([{ id: "root", name: "My Drive" }]);
@@ -81,8 +84,22 @@ export function PickFromDrive({ connected, folderId }: PickFromDriveProps) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to use media");
       addMedia(data);
-      setSelectedMediaId(data.id);
-      addSelectedMediaId(data.id);
+      const isVideoOrGif = data.mimeType?.startsWith("video/") || data.mimeType === "image/gif";
+      const alreadyMulti = selectedMediaIds.length >= 1;
+      if (isVideoOrGif && alreadyMulti) {
+        setSelectionMessage(SELECTION_MESSAGE_MULTI_VIDEO_GIF);
+        return;
+      }
+      const singleSelected = media.find((m) => m.id === selectedMediaIds[0]);
+      const singleIsVideoOrGif = singleSelected && (singleSelected.mimeType?.startsWith("video/") || singleSelected.mimeType === "image/gif");
+      const replaceWithImage = !isVideoOrGif && selectedMediaIds.length === 1 && singleIsVideoOrGif;
+      if (replaceWithImage) {
+        setSelectedMediaIds([data.id]);
+        setSelectedMediaId(data.id);
+      } else {
+        setSelectedMediaId(data.id);
+        addSelectedMediaId(data.id);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to use media");
     } finally {
@@ -91,26 +108,20 @@ export function PickFromDrive({ connected, folderId }: PickFromDriveProps) {
   };
 
   const pickRandom = async () => {
-    if (files.length === 0) return;
     setError(null);
     try {
-      const qs = folderId != null ? `?folderId=${encodeURIComponent(folderId)}` : "";
-      const res = await fetch(`/api/drive/posted-ids${qs}`);
-      const data = await res.json().catch(() => ({ postedIds: [] }));
-      const postedIds: string[] = Array.isArray(data.postedIds) ? data.postedIds : [];
-      const fileIds = files.map((f) => f.id);
-      let notYetPosted = fileIds.filter((id) => !postedIds.includes(id));
-      if (notYetPosted.length === 0) {
-        await fetch("/api/drive/clear-round", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ folderId: folderId ?? null }),
-        });
-        notYetPosted = fileIds;
+      const res = await fetch("/api/drive/pick-random", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ folderId: folderId ?? undefined }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error ?? "Failed to pick random");
       }
-      const pool = notYetPosted.length > 0 ? notYetPosted : fileIds;
-      const nextId = pool[Math.floor(Math.random() * pool.length)];
-      await pickFile(nextId);
+      const fileId = data.fileId as string | undefined;
+      if (!fileId) throw new Error("No file returned");
+      await pickFile(fileId);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to pick random");
     }
@@ -135,7 +146,7 @@ export function PickFromDrive({ connected, folderId }: PickFromDriveProps) {
           >
             {loading ? "Loading…" : loadedOnce ? "Refresh" : "Browse Drive"}
           </button>
-          {files.length > 0 && (
+          {connected && (
             <button
               type="button"
               onClick={pickRandom}
@@ -210,7 +221,8 @@ export function PickFromDrive({ connected, folderId }: PickFromDriveProps) {
                   const isVideo = f.mimeType?.startsWith("video/");
                   const isImage = f.mimeType?.startsWith("image/");
                   const isGif = f.mimeType === "image/gif";
-                  const showThumb = (isImage || isVideo) && f.thumbnailLink;
+                  const showThumb = isImage || isVideo;
+                  const thumbSrc = showThumb ? `/api/drive/thumbnail?fileId=${encodeURIComponent(f.id)}` : null;
                   return (
                     <button
                       key={f.id}
@@ -219,10 +231,10 @@ export function PickFromDrive({ connected, folderId }: PickFromDriveProps) {
                       disabled={picking !== null}
                       className="relative aspect-square overflow-hidden rounded-xl border border-amber-200 bg-stone-50 transition hover:border-amber-400 disabled:opacity-50"
                     >
-                      {showThumb ? (
+                      {showThumb && thumbSrc ? (
                         <>
                           <img
-                            src={f.thumbnailLink}
+                            src={thumbSrc}
                             alt={f.name}
                             loading="lazy"
                             decoding="async"

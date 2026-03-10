@@ -31,3 +31,16 @@ alter table public.recurrence_settings
 
 comment on column public.recurrence_settings.post_times is 'JSON array of "HH:mm" strings, e.g. ["09:00","14:00","19:00"]';
 comment on column public.recurrence_settings.next_time_index is 'Index into post_times for next run (round-robin)';
+
+-- 4. Recurrence: caption preferences for auto-post (niche, topic, vibe, audience)
+-- -----------------------------------------------------------------------------
+alter table public.recurrence_settings
+  add column if not exists niche text,
+  add column if not exists topic text,
+  add column if not exists vibe text,
+  add column if not exists audience text;
+
+comment on column public.recurrence_settings.niche is 'Niche for AI caption (e.g. lifestyle, food, fitness)';
+comment on column public.recurrence_settings.topic is 'Topic override for AI caption';
+comment on column public.recurrence_settings.vibe is 'Vibe override for AI caption';
+comment on column public.recurrence_settings.audience is 'Audience override for AI caption';

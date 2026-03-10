@@ -290,13 +290,22 @@ export function getInstagramLoginUrl(baseUrl?: string): string {
   const origin = normalizeOriginForOAuth(raw);
   const redirectUri = `${origin}/api/auth/instagram/callback`;
   const scopes = [
-    "instagram_basic",
     "instagram_content_publish",
+    "instagram_manage_comments",
     "pages_show_list",
     "pages_read_engagement",
-    "pages_manage_posts", // Required to post to the Facebook Page (fixes #200 Permissions error)
-    "ads_read",
-    "business_management", // Required since Graph API v19 for /me/accounts to return Pages
+    "business_management",
   ];
   return `https://www.facebook.com/v25.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scopes.join(",")}&response_type=code`;
 }
+//   const scopes = [
+//     "instagram_basic",
+//     "instagram_content_publish",
+//     "pages_show_list",
+//     "pages_read_engagement",
+//     "pages_manage_posts", // Required to post to the Facebook Page (fixes #200 Permissions error)
+//     "ads_read",
+//     "business_management", // Required since Graph API v19 for /me/accounts to return Pages
+//   ];
+//   return `https://www.facebook.com/v25.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scopes.join(",")}&response_type=code`;
+// }

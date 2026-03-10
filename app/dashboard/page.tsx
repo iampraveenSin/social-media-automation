@@ -43,26 +43,54 @@ export default function DashboardPage() {
     setTopic,
     setVibe,
     setAudience,
+    selectionMessage,
+    setSelectionMessage,
   } = useAppStore();
 
-  const getEffectiveMediaId = async (): Promise<string> => {
-    if (selectedMediaIds.length === 0) throw new Error("Select at least one image");
-    if (selectedMediaIds.length === 1) return selectedMediaIds[0];
-    const urls = selectedMediaIds
-      .map((id) => {
-        const m = media.find((x) => x.id === id);
-        if (!m) return null;
-        return m.url.startsWith("http") ? m.url : `${typeof window !== "undefined" ? window.location.origin : ""}${m.url}`;
-      })
-      .filter(Boolean) as string[];
-    if (urls.length !== selectedMediaIds.length) throw new Error("Some selected images could not be loaded");
-    const blob = await buildCollageBlob(urls);
-    const form = new FormData();
-    form.append("file", new File([blob], "collage.png", { type: "image/png" }));
-    const res = await fetch("/api/upload", { method: "POST", body: form });
-    if (!res.ok) throw new Error("Failed to upload collage");
-    const item = (await res.json()) as MediaItem;
-    return item.id;
+  const getEffectiveMediaId = async (): Promise<{ mediaId: string; driveFileIds: string[] }> => {
+    if (selectedMediaIds.length === 0) throw new Error("Select at least one item");
+    const selectedItems = selectedMediaIds
+      .map((id) => media.find((x) => x.id === id))
+      .filter(Boolean) as MediaItem[];
+    const imageItems = selectedItems.filter(
+      (m) => m.mimeType?.startsWith("image/") && m.mimeType !== "image/gif"
+    );
+
+    if (selectedMediaIds.length === 1) {
+      const one = selectedItems[0];
+      return {
+        mediaId: one!.id,
+        driveFileIds: one?.driveFileId ? [one.driveFileId] : [],
+      };
+    }
+
+    if (imageItems.length >= 2) {
+      const urls = imageItems
+        .map((m) => (m.url.startsWith("http") ? m.url : `${typeof window !== "undefined" ? window.location.origin : ""}${m.url.startsWith("/") ? "" : "/"}${m.url}`))
+        .filter(Boolean) as string[];
+      if (urls.length !== imageItems.length) throw new Error("Some selected images could not be loaded");
+      const blob = await buildCollageBlob(urls);
+      const form = new FormData();
+      form.append("file", new File([blob], "collage.png", { type: "image/png" }));
+      const res = await fetch("/api/upload", { method: "POST", body: form });
+      if (!res.ok) throw new Error("Failed to upload collage");
+      const item = (await res.json()) as MediaItem;
+      const driveFileIds = imageItems.map((m) => m.driveFileId).filter(Boolean) as string[];
+      return { mediaId: item.id, driveFileIds };
+    }
+
+    if (imageItems.length === 1) {
+      return {
+        mediaId: imageItems[0]!.id,
+        driveFileIds: imageItems[0]?.driveFileId ? [imageItems[0].driveFileId] : [],
+      };
+    }
+
+    const first = selectedItems[0];
+    return {
+      mediaId: first!.id,
+      driveFileIds: first?.driveFileId ? [first.driveFileId] : [],
+    };
   };
 
   const [account, setAccount] = useState<{ connected: boolean; username?: string; suggestedNiche?: string | null }>({ connected: false });
@@ -138,6 +166,25 @@ export default function DashboardPage() {
         setSelectedMediaId(null);
       });
   }, [setSelectedMediaIds, setSelectedMediaId]);
+
+  /** Normalize selection: no dupes, images-only when multi. */
+  useEffect(() => {
+    if (media.length === 0 || selectedMediaIds.length <= 1) return;
+    const hasVideoOrGif = selectedMediaIds.some(
+      (id) => {
+        const m = media.find((x) => x.id === id);
+        return m && (m.mimeType?.startsWith("video/") || m.mimeType === "image/gif");
+      }
+    );
+    const hasDupes = selectedMediaIds.length !== new Set(selectedMediaIds).size;
+    if (hasVideoOrGif || hasDupes) setSelectedMediaIds(selectedMediaIds);
+  }, [media, selectedMediaIds, setSelectedMediaIds]);
+
+  useEffect(() => {
+    if (!selectionMessage) return;
+    const t = setTimeout(() => setSelectionMessage(null), 5000);
+    return () => clearTimeout(t);
+  }, [selectionMessage, setSelectionMessage]);
 
   useEffect(() => {
     const opts = { credentials: "include" as RequestCredentials };
@@ -275,6 +322,7 @@ export default function DashboardPage() {
     setScheduleSuccess(false);
     try {
       let mediaId: string;
+      let driveIdsForPost: string[] = [];
       const singleMedia = selectedMediaIds.length === 1 ? media.find((m) => m.id === selectedMediaIds[0]) : null;
       const isVideo = singleMedia?.mimeType?.startsWith("video/");
 
@@ -298,12 +346,15 @@ export default function DashboardPage() {
         const uploadedItem = (await upRes.json()) as MediaItem;
         addMedia(uploadedItem);
         mediaId = uploadedItem.id;
+        driveIdsForPost = singleMedia.driveFileId ? [singleMedia.driveFileId] : [];
       } else {
-        mediaId = await getEffectiveMediaId();
+        const effective = await getEffectiveMediaId();
+        mediaId = effective.mediaId;
+        driveIdsForPost = effective.driveFileIds;
       }
 
       const at = scheduledAt ?? new Date(Date.now() + 3600000);
-      const driveIds = selectedMediaIds.map((id) => media.find((m) => m.id === id)?.driveFileId).filter(Boolean) as string[];
+      const driveIds = driveIdsForPost;
       const res = await fetch("/api/schedule", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -349,6 +400,7 @@ export default function DashboardPage() {
     setError(null);
     try {
       let mediaId: string;
+      let driveIdsForPost: string[] = [];
       const singleMedia = selectedMediaIds.length === 1 ? media.find((m) => m.id === selectedMediaIds[0]) : null;
       const isVideo = singleMedia?.mimeType?.startsWith("video/");
 
@@ -372,11 +424,14 @@ export default function DashboardPage() {
         const uploadedItem = (await upRes.json()) as MediaItem;
         addMedia(uploadedItem);
         mediaId = uploadedItem.id;
+        driveIdsForPost = singleMedia.driveFileId ? [singleMedia.driveFileId] : [];
       } else {
-        mediaId = await getEffectiveMediaId();
+        const effective = await getEffectiveMediaId();
+        mediaId = effective.mediaId;
+        driveIdsForPost = effective.driveFileIds;
       }
 
-      const driveIds = selectedMediaIds.map((id) => media.find((m) => m.id === id)?.driveFileId).filter(Boolean) as string[];
+      const driveIds = driveIdsForPost;
       const res = await fetch("/api/publish-now", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -549,6 +604,19 @@ export default function DashboardPage() {
               <h2 className="font-display text-3xl font-medium text-stone-800">New post</h2>
               <p className="mt-1 text-sm text-stone-700">Create content for Instagram & Facebook.</p>
             </div>
+
+            {selectionMessage && (
+              <div className="mb-6 flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3">
+                <p className="flex-1 text-sm text-amber-900">{selectionMessage}</p>
+                <button
+                  type="button"
+                  onClick={() => setSelectionMessage(null)}
+                  className="shrink-0 rounded-lg bg-amber-200 px-3 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-300"
+                >
+                  Dismiss
+                </button>
+              </div>
+            )}
 
             {/* Accounts */}
             <div className="grid gap-4 sm:grid-cols-2 mb-8">

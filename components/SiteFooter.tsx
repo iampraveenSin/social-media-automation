@@ -12,6 +12,9 @@ export function SiteFooter() {
           </Link>
           <nav className="flex flex-wrap items-center justify-center gap-6 text-sm text-white/60">
             <a href="/#features" className="hover:text-white transition">Features</a>
+            <Link href="/privacy-policy" className="hover:text-white transition">Privacy</Link>
+            <Link href="/terms-of-service" className="hover:text-white transition">Terms</Link>
+            <Link href="/data-deletion" className="hover:text-white transition">Data Deletion</Link>
             <Link href="/login" className="hover:text-white transition">Log in</Link>
             <Link href="/dashboard" className="hover:text-white transition">Dashboard</Link>
             <a href="/api/auth/instagram" className="hover:text-white transition">Connect Instagram</a>

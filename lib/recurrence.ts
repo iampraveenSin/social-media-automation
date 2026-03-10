@@ -1,6 +1,10 @@
 /**
  * Recurring auto-post: pick random media from Drive and publish on a schedule.
  * Used by the queue worker (processRecurrence) and by GET/POST /api/recurrence for nextRunAt.
+ *
+ * Selection validation (same logical rules as UI): no videos in multi-image post; collage uses
+ * only images. Auto Post does not use the app store selection; it picks from Drive and enforces
+ * these rules here (images-only for collage, single video allowed when posting one item).
  */
 
 import { addDays, addMonths } from "date-fns";
@@ -20,8 +24,9 @@ import {
   saveMediaItem,
   savePost,
 } from "./store";
-import { refreshDriveAccessToken, listMediaInFolder, downloadDriveFile } from "./drive";
+import { refreshDriveAccessToken, listMediaInFolderRecursive, downloadDriveFile } from "./drive";
 import { uploadToSupabaseStorage } from "./storage";
+import { buildCollageBuffer } from "./collage-server";
 import { publishToInstagram, publishToFacebookPage, isPublicImageUrl, buildCaptionWithHashtags } from "./instagram";
 import type { InstagramMediaType } from "./instagram";
 import { resolveVideoForPublish } from "./video";
@@ -89,6 +94,24 @@ function mimeToExt(mimeType: string): string {
   return ".jpg";
 }
 
+function isImageMime(mimeType: string): boolean {
+  return mimeType.startsWith("image/");
+}
+
+/** Images allowed in multi-select/collage: exclude GIF (same rule as UI). */
+function allowedForCollage(mimeType: string): boolean {
+  return mimeType.startsWith("image/") && mimeType !== "image/gif";
+}
+
+/** Fisher–Yates shuffle (mutates array). */
+function shuffle<T>(arr: T[]): T[] {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
 /**
  * Process one user's recurring post: pick random media from Drive, publish to Instagram, advance nextRunAt.
  */
@@ -111,7 +134,7 @@ export async function processRecurrenceForUser(appUserId: string): Promise<{ ok:
   if (!account) return { ok: false, error: "No Instagram account connected" };
 
   const folderId = settings.driveFolderId ?? driveAccount.folderId ?? "root";
-  const listResult = await listMediaInFolder(accessToken, folderId);
+  const listResult = await listMediaInFolderRecursive(accessToken, folderId);
   if (listResult.error || !listResult.files?.length) {
     const { nextRunAt, nextTimeIndex } = computeNextRunAtWithTimes(settings.frequency, new Date(), settings.postTimes ?? DEFAULT_POST_TIMES, settings.nextTimeIndex ?? 0);
     await saveRecurrenceSettings(appUserId, { ...settings, nextRunAt, nextTimeIndex });
@@ -119,12 +142,132 @@ export async function processRecurrenceForUser(appUserId: string): Promise<{ ok:
   }
 
   const posted = await getDrivePostedRound(appUserId, folderId);
-  let candidates = listResult.files.filter((f) => !posted.includes(f.id));
+  let candidates = listResult.files.filter((f) => f.id && !posted.includes(f.id));
   if (candidates.length === 0) {
     await clearDrivePostedRound(appUserId, folderId);
-    candidates = listResult.files;
+    candidates = listResult.files.filter((f) => f.id);
   }
-  const chosen = candidates[Math.floor(Math.random() * candidates.length)];
+  if (candidates.length === 0) {
+    const { nextRunAt, nextTimeIndex } = computeNextRunAtWithTimes(settings.frequency, new Date(), settings.postTimes ?? DEFAULT_POST_TIMES, settings.nextTimeIndex ?? 0);
+    await saveRecurrenceSettings(appUserId, { ...settings, nextRunAt, nextTimeIndex });
+    return { ok: false, error: "No media to pick" };
+  }
+
+  shuffle(candidates);
+  const imageCandidates = candidates.filter((f) => allowedForCollage(f.mimeType));
+  const doCollage =
+    imageCandidates.length >= 2 &&
+    Math.random() < 0.4;
+
+  if (doCollage) {
+    const count = Math.min(
+      10,
+      imageCandidates.length,
+      2 + Math.floor(Math.random() * Math.max(0, imageCandidates.length - 1))
+    );
+    const chosenImages = imageCandidates.slice(0, count);
+    const buffers: Buffer[] = [];
+    for (const file of chosenImages) {
+      const d = await downloadDriveFile(accessToken, file.id);
+      if (!d) continue;
+      buffers.push(d.buffer);
+    }
+    if (buffers.length < 2) {
+      const { nextRunAt, nextTimeIndex } = computeNextRunAtWithTimes(settings.frequency, new Date(), settings.postTimes ?? DEFAULT_POST_TIMES, settings.nextTimeIndex ?? 0);
+      await saveRecurrenceSettings(appUserId, { ...settings, nextRunAt, nextTimeIndex });
+      return { ok: false, error: "Failed to download enough images for collage" };
+    }
+    const collageBuffer = await buildCollageBuffer(buffers);
+    const mediaId = uuidv4();
+    const filename = `${mediaId}.png`;
+    if (!isSupabaseConfigured()) {
+      const { nextRunAt, nextTimeIndex } = computeNextRunAtWithTimes(settings.frequency, new Date(), settings.postTimes ?? DEFAULT_POST_TIMES, settings.nextTimeIndex ?? 0);
+      await saveRecurrenceSettings(appUserId, { ...settings, nextRunAt, nextTimeIndex });
+      return { ok: false, error: "Recurring posts require Supabase storage" };
+    }
+    const uploadResult = await uploadToSupabaseStorage(filename, collageBuffer, "image/png");
+    if (!uploadResult.url) {
+      const { nextRunAt, nextTimeIndex } = computeNextRunAtWithTimes(settings.frequency, new Date(), settings.postTimes ?? DEFAULT_POST_TIMES, settings.nextTimeIndex ?? 0);
+      await saveRecurrenceSettings(appUserId, { ...settings, nextRunAt, nextTimeIndex });
+      return { ok: false, error: "Failed to upload collage" };
+    }
+    const mediaUrl = uploadResult.url;
+    const item: MediaItem = {
+      id: mediaId,
+      filename,
+      path: mediaUrl,
+      url: mediaUrl,
+      mimeType: "image/png",
+      uploadedAt: new Date().toISOString(),
+      userId: appUserId,
+    };
+    await saveMediaItem(item);
+    if (!isPublicImageUrl(mediaUrl)) {
+      const { nextRunAt, nextTimeIndex } = computeNextRunAtWithTimes(settings.frequency, new Date(), settings.postTimes ?? DEFAULT_POST_TIMES, settings.nextTimeIndex ?? 0);
+      await saveRecurrenceSettings(appUserId, { ...settings, nextRunAt, nextTimeIndex });
+      return { ok: false, error: "Media URL not publicly accessible" };
+    }
+    const userOverrides = {
+      niche: (settings.niche ?? account.suggestedNiche ?? "lifestyle").trim() || "lifestyle",
+      topic: (settings.topic ?? "").trim() || undefined,
+      vibe: (settings.vibe ?? "").trim() || undefined,
+      audience: (settings.audience ?? "").trim() || undefined,
+    };
+    const aiResult = await generateCaptionForMedia(mediaUrl, true, userOverrides);
+    const finalCaption = aiResult?.caption ?? DEFAULT_CAPTION;
+    const finalHashtags = aiResult?.hashtags?.length ? aiResult.hashtags : DEFAULT_HASHTAGS;
+    const caption = buildCaptionWithHashtags(finalCaption, finalHashtags);
+    const result = await publishToInstagram(
+      account.instagramBusinessAccountId,
+      account.accessToken,
+      mediaUrl,
+      caption,
+      "image"
+    );
+    if ("error" in result) {
+      const { nextRunAt, nextTimeIndex } = computeNextRunAtWithTimes(settings.frequency, new Date(), settings.postTimes ?? DEFAULT_POST_TIMES, settings.nextTimeIndex ?? 0);
+      await saveRecurrenceSettings(appUserId, { ...settings, nextRunAt, nextTimeIndex });
+      return { ok: false, error: result.error };
+    }
+    if (account.facebookPageId) {
+      const fbResult = await publishToFacebookPage(
+        account.facebookPageId,
+        account.accessToken,
+        mediaUrl,
+        caption,
+        "image"
+      );
+      if ("error" in fbResult) console.warn("[recurrence] Facebook post failed:", fbResult.error);
+    }
+    const postId = uuidv4();
+    const now = new Date().toISOString();
+    const post: ScheduledPost = {
+      id: postId,
+      mediaId,
+      mediaUrl,
+      caption: finalCaption,
+      hashtags: finalHashtags,
+      mediaType: "image",
+      scheduledAt: now,
+      publishedAt: now,
+      status: "published",
+      userId: account.userId,
+      appUserId,
+      createdAt: now,
+      instagramMediaId: result.id,
+    };
+    await savePost(post);
+    await addDrivePostedRound(
+      appUserId,
+      folderId,
+      chosenImages.map((c) => c.id)
+    );
+    const { nextRunAt, nextTimeIndex } = computeNextRunAtWithTimes(settings.frequency, new Date(), settings.postTimes ?? DEFAULT_POST_TIMES, settings.nextTimeIndex ?? 0);
+    await saveRecurrenceSettings(appUserId, { ...settings, nextRunAt, nextTimeIndex });
+    return { ok: true };
+  }
+
+  const chosen = candidates[0];
   if (!chosen) {
     const { nextRunAt, nextTimeIndex } = computeNextRunAtWithTimes(settings.frequency, new Date(), settings.postTimes ?? DEFAULT_POST_TIMES, settings.nextTimeIndex ?? 0);
     await saveRecurrenceSettings(appUserId, { ...settings, nextRunAt, nextTimeIndex });
