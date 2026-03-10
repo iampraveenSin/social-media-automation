@@ -283,7 +283,6 @@ function normalizeOriginForOAuth(origin: string): string {
   }
 }
 
-/** baseUrl = request origin (e.g. http://localhost:3000) so redirect comes back to same host and cookie is sent */
 export function getInstagramLoginUrl(baseUrl?: string): string {
   const appId = process.env.META_APP_ID ?? "";
   const raw = baseUrl ?? process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
@@ -296,8 +295,15 @@ export function getInstagramLoginUrl(baseUrl?: string): string {
     "pages_read_engagement",
     "business_management",
   ];
-  return `https://www.facebook.com/v25.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scopes.join(",")}&response_type=code`;
+  const configId = process.env.META_CONFIG_ID ?? "";
+  return `https://www.facebook.com/v25.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scopes.join(",")}&response_type=code&config_id=${configId}`;
 }
+
+/** baseUrl = request origin (e.g. http://localhost:3000) so redirect comes back to same host and cookie is sent */
+// export function getInstagramLoginUrl(baseUrl?: string): string {
+//   const appId = process.env.META_APP_ID ?? "";
+//   const raw = baseUrl ?? process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+//   const origin = normalizeOriginForOAuth(raw);
 //   const scopes = [
 //     "instagram_basic",
 //     "instagram_content_publish",
