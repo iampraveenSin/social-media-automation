@@ -79,83 +79,31 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(`${baseUrl}/dashboard?${params.toString()}`);
   }
 
-  // Get the IG account ID that was actually granted instagram_basic permission.
-  // Facebook Login for Business may grant permissions for a different IG account
-  // than the one linked via instagram_business_account on the page.
-  let grantedIgAccountId: string | null = null;
-  try {
-    const debugUrl = `${META_GRAPH_BASE}/debug_token?input_token=${encodeURIComponent(accessToken)}&access_token=${process.env.META_APP_ID}|${process.env.META_APP_SECRET}`;
-    const debugRes = await fetch(debugUrl);
-    const debugData = (await debugRes.json()) as {
-      data?: { granular_scopes?: Array<{ scope: string; target_ids?: string[] }> };
-    };
-    const igBasicScope = debugData.data?.granular_scopes?.find((s) => s.scope === "instagram_basic");
-    grantedIgAccountId = igBasicScope?.target_ids?.[0] ?? null;
-  } catch {
-    // Non-blocking
-  }
-
   // Collect ALL pages that have an Instagram Business Account linked
   const pagesWithIg: PageWithInstagram[] = [];
 
   for (const page of pages) {
     const pageToken = page.access_token;
 
-    // 1) Try standard field: get the IG account linked to this page
+    // 1) Try standard field
     const igAccountUrl = `${META_GRAPH_BASE}/${page.id}?fields=instagram_business_account&access_token=${pageToken}`;
     const igRes = await fetch(igAccountUrl);
     const igData = (await igRes.json()) as {
       instagram_business_account?: { id: string };
       error?: { message: string; code?: number };
     };
-
     if (!igData.error && igData.instagram_business_account?.id) {
-      let igId = igData.instagram_business_account.id;
-
-      // Try to fetch profile info for this IG account
-      const profileUrl = `${META_GRAPH_BASE}/${igId}?fields=username,profile_picture_url&access_token=${pageToken}`;
+      // Fetch IG profile to get username and picture
+      const profileUrl = `${META_GRAPH_BASE}/${igData.instagram_business_account.id}?fields=username,profile_picture_url&access_token=${pageToken}`;
       const profileRes = await fetch(profileUrl);
       const profileData = (await profileRes.json()) as { username?: string; profile_picture_url?: string };
-
-      if (profileData.username) {
-        // Profile data available — we have instagram_basic for this account
-        pagesWithIg.push({
-          pageId: page.id,
-          pageName: page.name,
-          pageAccessToken: pageToken,
-          igBusinessId: igId,
-          igUsername: profileData.username,
-          igProfilePicture: profileData.profile_picture_url,
-        });
-        continue;
-      }
-
-      // No username returned — instagram_basic was granted for a different IG account
-      // Use the granted IG account ID from debug_token instead
-      if (grantedIgAccountId && grantedIgAccountId !== igId) {
-        const grantedProfileUrl = `${META_GRAPH_BASE}/${grantedIgAccountId}?fields=username,profile_picture_url&access_token=${pageToken}`;
-        const grantedProfileRes = await fetch(grantedProfileUrl);
-        const grantedProfile = (await grantedProfileRes.json()) as { username?: string; profile_picture_url?: string };
-        if (grantedProfile.username) {
-          pagesWithIg.push({
-            pageId: page.id,
-            pageName: page.name,
-            pageAccessToken: pageToken,
-            igBusinessId: grantedIgAccountId,
-            igUsername: grantedProfile.username,
-            igProfilePicture: grantedProfile.profile_picture_url,
-          });
-          continue;
-        }
-      }
-
-      // Still no luck — save with original IG ID and fallback username
       pagesWithIg.push({
         pageId: page.id,
         pageName: page.name,
         pageAccessToken: pageToken,
-        igBusinessId: igId,
-        igUsername: "instagram",
+        igBusinessId: igData.instagram_business_account.id,
+        igUsername: profileData.username ?? "instagram",
+        igProfilePicture: profileData.profile_picture_url,
       });
       continue;
     }
