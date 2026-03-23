@@ -306,7 +306,6 @@ export function getInstagramLoginUrl(baseUrl?: string): string {
   const redirectUri = `${origin}/api/auth/instagram/callback`;
   const scopes = [
     "instagram_basic",
-    "instagram_business_basic",
     "instagram_manage_messages",
     "instagram_content_publish",
     "instagram_manage_comments",
