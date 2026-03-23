@@ -13,6 +13,7 @@ export async function GET(request: NextRequest) {
   if (!account) return NextResponse.json({ error: "no account" });
 
   const igId = account.instagramBusinessAccountId;
+  const pageId = account.facebookPageId;
   const token = account.accessToken;
 
   // Test 1: Fetch IG profile with instagram_basic fields
@@ -20,22 +21,41 @@ export async function GET(request: NextRequest) {
   const profileRes = await fetch(profileUrl);
   const profileData = await profileRes.json();
 
-  // Test 2: Fetch IG profile with minimal fields
-  const minimalUrl = `${META_GRAPH_BASE}/${igId}?fields=id,username&access_token=${encodeURIComponent(token)}`;
-  const minimalRes = await fetch(minimalUrl);
-  const minimalData = await minimalRes.json();
+  // Test 2: Try connected_instagram_account edge on the page
+  let connectedIgData = null;
+  if (pageId) {
+    const connectedUrl = `${META_GRAPH_BASE}/${pageId}/connected_instagram_account?fields=id,username,profile_picture_url,media_count&access_token=${encodeURIComponent(token)}`;
+    const connectedRes = await fetch(connectedUrl);
+    connectedIgData = await connectedRes.json();
+  }
 
-  // Test 3: Check token debug info
+  // Test 3: Check token debug info (granular scopes)
   const debugUrl = `${META_GRAPH_BASE}/debug_token?input_token=${encodeURIComponent(token)}&access_token=${process.env.META_APP_ID}|${process.env.META_APP_SECRET}`;
   const debugRes = await fetch(debugUrl);
   const debugData = await debugRes.json();
 
+  // Test 4: Try fetching with the granted IG account ID from granular scopes
+  let grantedIgProfile = null;
+  const igBasicScope = debugData?.data?.granular_scopes?.find((s: any) => s.scope === "instagram_basic");
+  if (igBasicScope?.target_ids?.[0] && igBasicScope.target_ids[0] !== igId) {
+    const grantedId = igBasicScope.target_ids[0];
+    const grantedUrl = `${META_GRAPH_BASE}/${grantedId}?fields=username,name,profile_picture_url,media_count&access_token=${encodeURIComponent(token)}`;
+    const grantedRes = await fetch(grantedUrl);
+    grantedIgProfile = { id: grantedId, ...(await grantedRes.json()) };
+  }
+
   return NextResponse.json({
-    igBusinessAccountId: igId,
-    storedUsername: account.username,
-    storedPageName: (account as any).facebookPageName,
+    storedAccount: {
+      igBusinessAccountId: igId,
+      facebookPageId: pageId,
+      username: account.username,
+      facebookPageName: (account as any).facebookPageName,
+      profilePictureUrl: (account as any).profilePictureUrl,
+      mediaCount: (account as any).mediaCount,
+    },
     profileApiResponse: profileData,
-    minimalApiResponse: minimalData,
-    tokenDebug: debugData,
+    connectedInstagramAccount: connectedIgData,
+    grantedIgProfile,
+    tokenScopes: debugData?.data?.granular_scopes,
   });
 }

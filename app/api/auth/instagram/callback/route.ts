@@ -79,39 +79,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(`${baseUrl}/dashboard?${params.toString()}`);
   }
 
-  // Get the IG account IDs that were actually granted instagram_basic permission
-  // (Facebook Login for Business may grant permissions for different IG accounts than the page's linked account)
-  let grantedIgAccountIds: string[] = [];
-  try {
-    const debugUrl = `${META_GRAPH_BASE}/debug_token?input_token=${encodeURIComponent(pages[0].access_token)}&access_token=${process.env.META_APP_ID}|${process.env.META_APP_SECRET}`;
-    const debugRes = await fetch(debugUrl);
-    const debugData = (await debugRes.json()) as {
-      data?: {
-        granular_scopes?: Array<{ scope: string; target_ids?: string[] }>;
-      };
-    };
-    const igBasicScope = debugData.data?.granular_scopes?.find((s) => s.scope === "instagram_basic");
-    if (igBasicScope?.target_ids) {
-      grantedIgAccountIds = igBasicScope.target_ids;
-    }
-  } catch {
-    // Non-blocking: continue without granted IDs
-  }
-
-  // Helper to fetch IG profile fields (username, picture, etc.)
-  async function fetchIgProfile(igId: string, token: string): Promise<{ username?: string; profile_picture_url?: string }> {
-    const url = `${META_GRAPH_BASE}/${igId}?fields=username,profile_picture_url&access_token=${encodeURIComponent(token)}`;
-    const res = await fetch(url);
-    return (await res.json()) as { username?: string; profile_picture_url?: string };
-  }
-
   // Collect ALL pages that have an Instagram Business Account linked
   const pagesWithIg: PageWithInstagram[] = [];
 
   for (const page of pages) {
     const pageToken = page.access_token;
 
-    // 1) Try standard field
+    // 1) Try standard field: get the IG account linked to this page
     const igAccountUrl = `${META_GRAPH_BASE}/${page.id}?fields=instagram_business_account&access_token=${pageToken}`;
     const igRes = await fetch(igAccountUrl);
     const igData = (await igRes.json()) as {
@@ -119,24 +93,54 @@ export async function GET(request: NextRequest) {
       error?: { message: string; code?: number };
     };
 
-    let igBusinessId = igData.instagram_business_account?.id;
+    if (!igData.error && igData.instagram_business_account?.id) {
+      const igId = igData.instagram_business_account.id;
+      // Try to fetch profile info for this IG account
+      const profileUrl = `${META_GRAPH_BASE}/${igId}?fields=username,profile_picture_url&access_token=${pageToken}`;
+      const profileRes = await fetch(profileUrl);
+      const profileData = (await profileRes.json()) as { username?: string; profile_picture_url?: string };
 
-    // If the page has a linked IG account but it doesn't match the granted instagram_basic scope,
-    // prefer the granted IG account (this fixes the mismatch from Facebook Login for Business)
-    if (igBusinessId && grantedIgAccountIds.length > 0 && !grantedIgAccountIds.includes(igBusinessId)) {
-      // Use the granted IG account instead — it's the one we actually have permission for
-      igBusinessId = grantedIgAccountIds[0];
-    }
+      // If username came back, we have permission — use this IG account
+      if (profileData.username) {
+        pagesWithIg.push({
+          pageId: page.id,
+          pageName: page.name,
+          pageAccessToken: pageToken,
+          igBusinessId: igId,
+          igUsername: profileData.username,
+          igProfilePicture: profileData.profile_picture_url,
+        });
+        continue;
+      }
 
-    if (igBusinessId) {
-      const profileData = await fetchIgProfile(igBusinessId, pageToken);
+      // Username is missing — likely instagram_basic was granted for a different IG account
+      // Try to find the correct IG account via connected_instagram_account edge
+      try {
+        const connectedUrl = `${META_GRAPH_BASE}/${page.id}/connected_instagram_account?fields=id,username,profile_picture_url&access_token=${pageToken}`;
+        const connectedRes = await fetch(connectedUrl);
+        const connectedData = (await connectedRes.json()) as { id?: string; username?: string; profile_picture_url?: string; error?: unknown };
+        if (connectedData.username && connectedData.id) {
+          pagesWithIg.push({
+            pageId: page.id,
+            pageName: page.name,
+            pageAccessToken: pageToken,
+            igBusinessId: connectedData.id,
+            igUsername: connectedData.username,
+            igProfilePicture: connectedData.profile_picture_url,
+          });
+          continue;
+        }
+      } catch {
+        // Fall through to use the original IG ID without profile data
+      }
+
+      // Still no luck — save with the original IG ID and fallback username
       pagesWithIg.push({
         pageId: page.id,
         pageName: page.name,
         pageAccessToken: pageToken,
-        igBusinessId,
-        igUsername: profileData.username ?? "instagram",
-        igProfilePicture: profileData.profile_picture_url,
+        igBusinessId: igId,
+        igUsername: "instagram",
       });
       continue;
     }
