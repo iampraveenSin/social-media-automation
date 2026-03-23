@@ -79,6 +79,22 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(`${baseUrl}/dashboard?${params.toString()}`);
   }
 
+  // Get the IG account ID that was actually granted instagram_basic permission.
+  // Facebook Login for Business may grant permissions for a different IG account
+  // than the one linked via instagram_business_account on the page.
+  let grantedIgAccountId: string | null = null;
+  try {
+    const debugUrl = `${META_GRAPH_BASE}/debug_token?input_token=${encodeURIComponent(accessToken)}&access_token=${process.env.META_APP_ID}|${process.env.META_APP_SECRET}`;
+    const debugRes = await fetch(debugUrl);
+    const debugData = (await debugRes.json()) as {
+      data?: { granular_scopes?: Array<{ scope: string; target_ids?: string[] }> };
+    };
+    const igBasicScope = debugData.data?.granular_scopes?.find((s) => s.scope === "instagram_basic");
+    grantedIgAccountId = igBasicScope?.target_ids?.[0] ?? null;
+  } catch {
+    // Non-blocking
+  }
+
   // Collect ALL pages that have an Instagram Business Account linked
   const pagesWithIg: PageWithInstagram[] = [];
 
@@ -94,14 +110,15 @@ export async function GET(request: NextRequest) {
     };
 
     if (!igData.error && igData.instagram_business_account?.id) {
-      const igId = igData.instagram_business_account.id;
+      let igId = igData.instagram_business_account.id;
+
       // Try to fetch profile info for this IG account
       const profileUrl = `${META_GRAPH_BASE}/${igId}?fields=username,profile_picture_url&access_token=${pageToken}`;
       const profileRes = await fetch(profileUrl);
       const profileData = (await profileRes.json()) as { username?: string; profile_picture_url?: string };
 
-      // If username came back, we have permission — use this IG account
       if (profileData.username) {
+        // Profile data available — we have instagram_basic for this account
         pagesWithIg.push({
           pageId: page.id,
           pageName: page.name,
@@ -113,28 +130,26 @@ export async function GET(request: NextRequest) {
         continue;
       }
 
-      // Username is missing — likely instagram_basic was granted for a different IG account
-      // Try to find the correct IG account via connected_instagram_account edge
-      try {
-        const connectedUrl = `${META_GRAPH_BASE}/${page.id}/connected_instagram_account?fields=id,username,profile_picture_url&access_token=${pageToken}`;
-        const connectedRes = await fetch(connectedUrl);
-        const connectedData = (await connectedRes.json()) as { id?: string; username?: string; profile_picture_url?: string; error?: unknown };
-        if (connectedData.username && connectedData.id) {
+      // No username returned — instagram_basic was granted for a different IG account
+      // Use the granted IG account ID from debug_token instead
+      if (grantedIgAccountId && grantedIgAccountId !== igId) {
+        const grantedProfileUrl = `${META_GRAPH_BASE}/${grantedIgAccountId}?fields=username,profile_picture_url&access_token=${pageToken}`;
+        const grantedProfileRes = await fetch(grantedProfileUrl);
+        const grantedProfile = (await grantedProfileRes.json()) as { username?: string; profile_picture_url?: string };
+        if (grantedProfile.username) {
           pagesWithIg.push({
             pageId: page.id,
             pageName: page.name,
             pageAccessToken: pageToken,
-            igBusinessId: connectedData.id,
-            igUsername: connectedData.username,
-            igProfilePicture: connectedData.profile_picture_url,
+            igBusinessId: grantedIgAccountId,
+            igUsername: grantedProfile.username,
+            igProfilePicture: grantedProfile.profile_picture_url,
           });
           continue;
         }
-      } catch {
-        // Fall through to use the original IG ID without profile data
       }
 
-      // Still no luck — save with the original IG ID and fallback username
+      // Still no luck — save with original IG ID and fallback username
       pagesWithIg.push({
         pageId: page.id,
         pageName: page.name,
