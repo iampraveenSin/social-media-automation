@@ -16,14 +16,19 @@ export async function GET(
   if (!post.instagramMediaId) {
     return NextResponse.json({ error: "Post has no Instagram media id yet" }, { status: 400 });
   }
+  if (!post.userId) {
+    return NextResponse.json({ error: "Post is missing Instagram account owner metadata." }, { status: 400 });
+  }
 
-  let account = post.userId ? await getAccountByUserId(post.userId) : null;
+  const account = await getAccountByUserId(post.userId);
   if (!account) {
     const accounts = await getAccounts(session.userId);
-    account = accounts[0] ?? null;
-  }
-  if (!account) {
-    return NextResponse.json({ error: "No Instagram account connected" }, { status: 400 });
+    const active = accounts[0] ?? null;
+    if (!active) return NextResponse.json({ error: "No Instagram account connected" }, { status: 400 });
+    return NextResponse.json(
+      { error: "This post belongs to a different Instagram account. Reconnect the original account to open its Instagram link." },
+      { status: 400 }
+    );
   }
 
   const permalink = await getInstagramMediaPermalink(post.instagramMediaId, account.accessToken);

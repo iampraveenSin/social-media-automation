@@ -7,6 +7,7 @@ import type { ScheduledPost } from "@/lib/types";
 
 interface PostCardProps {
   post: ScheduledPost;
+  connectedMetaUserId?: string;
   onPublishNow?: (postId: string) => void | Promise<void>;
 }
 
@@ -18,7 +19,14 @@ const statusColors: Record<string, string> = {
   failed: "text-red-600",
 };
 
-export function PostCard({ post, onPublishNow }: PostCardProps) {
+export function PostCard({ post, connectedMetaUserId, onPublishNow }: PostCardProps) {
+  const canViewOnInstagram =
+    post.status === "published" &&
+    !!post.instagramMediaId &&
+    !!post.userId &&
+    !!connectedMetaUserId &&
+    post.userId === connectedMetaUserId;
+
   const [publishing, setPublishing] = useState(false);
   const canPublishNow = (post.status === "scheduled" || post.status === "failed") && onPublishNow;
 
@@ -95,7 +103,7 @@ export function PostCard({ post, onPublishNow }: PostCardProps) {
             {publishing ? "Publishing…" : "Publish now"}
           </button>
         )}
-        {post.status === "published" && post.instagramMediaId && (
+        {canViewOnInstagram && (
           <a
             href={`/api/posts/${post.id}/instagram-link`}
             target="_blank"
@@ -104,6 +112,11 @@ export function PostCard({ post, onPublishNow }: PostCardProps) {
           >
             View on Instagram
           </a>
+        )}
+        {post.status === "published" && post.instagramMediaId && !canViewOnInstagram && (
+          <p className="mt-2 text-xs text-stone-500">
+            This post belongs to a different connected Instagram account.
+          </p>
         )}
       </div>
     </motion.article>

@@ -25,6 +25,16 @@ export async function GET(request: NextRequest) {
     error?: { message?: string };
   };
   if (!profileRes.ok || profileData.error) {
+    const msg = profileData.error?.message ?? "";
+    if (msg.includes("(#10)") || msg.toLowerCase().includes("permission")) {
+      return NextResponse.json(
+        {
+          error:
+            "Missing Instagram Basic/profile permission for this app/account. Ensure instagram_basic is approved/granted and reconnect.",
+        },
+        { status: 400 }
+      );
+    }
     return NextResponse.json(
       { error: profileData.error?.message ?? "Failed to fetch Instagram profile" },
       { status: 400 }
@@ -48,6 +58,16 @@ export async function GET(request: NextRequest) {
     error?: { message?: string };
   };
   if (!mediaRes.ok || mediaData.error) {
+    const msg = mediaData.error?.message ?? "";
+    if (msg.includes("(#10)") || msg.toLowerCase().includes("permission")) {
+      return NextResponse.json(
+        {
+          error:
+            "Missing permission to read Instagram media for this app/account. Verify instagram_basic/related permissions and reconnect.",
+        },
+        { status: 400 }
+      );
+    }
     return NextResponse.json(
       { error: mediaData.error?.message ?? "Failed to fetch Instagram media" },
       { status: 400 }

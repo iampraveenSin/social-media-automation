@@ -12,6 +12,7 @@ export async function GET(request: NextRequest) {
       account
         ? {
             connected: true,
+            userId: account.userId,
             username: account.username,
             profilePictureUrl: account.profilePictureUrl,
             suggestedNiche: account.suggestedNiche ?? null,

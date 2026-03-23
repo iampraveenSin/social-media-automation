@@ -48,6 +48,16 @@ export async function GET(request: NextRequest) {
   const postsRes = await fetch(postsUrl, { cache: "no-store" });
   const postsData = (await postsRes.json()) as { data?: PagePostRaw[]; error?: { message?: string } };
   if (!postsRes.ok || postsData.error) {
+    const msg = postsData.error?.message ?? "";
+    if (msg.includes("(#10)") || msg.includes("pages_read_engagement")) {
+      return NextResponse.json(
+        {
+          error:
+            "pages_read_engagement permission is missing or not approved for this app/account. Grant this permission in Meta App Review and reconnect.",
+        },
+        { status: 400 }
+      );
+    }
     return NextResponse.json(
       { error: postsData.error?.message ?? "Failed to fetch Facebook posts" },
       { status: 400 }

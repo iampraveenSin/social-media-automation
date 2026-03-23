@@ -99,7 +99,7 @@ export default function DashboardPage() {
     };
   };
 
-  const [account, setAccount] = useState<{ connected: boolean; username?: string; profilePictureUrl?: string; suggestedNiche?: string | null }>({ connected: false });
+  const [account, setAccount] = useState<{ connected: boolean; userId?: string; username?: string; profilePictureUrl?: string; suggestedNiche?: string | null }>({ connected: false });
   const [drive, setDrive] = useState<{ connected: boolean; folderId?: string | null }>({ connected: false });
   const [analyzingAccount, setAnalyzingAccount] = useState(false);
   const [scheduling, setScheduling] = useState(false);
@@ -771,7 +771,7 @@ export default function DashboardPage() {
                     await fetch("/api/auth/instagram/disconnect", { method: "POST" });
                     const res = await fetch("/api/accounts");
                     const data = await res.json();
-                    setAccount({ connected: data.connected ?? false, username: data.username, profilePictureUrl: data.profilePictureUrl });
+                    setAccount({ connected: data.connected ?? false, userId: data.userId, username: data.username, profilePictureUrl: data.profilePictureUrl });
                   }}
                 />
               </div>
@@ -1021,6 +1021,7 @@ export default function DashboardPage() {
                   <PostCard
                     key={post.id}
                     post={post}
+                    connectedMetaUserId={account.userId}
                     onPublishNow={async (postId) => {
                       try {
                         const res = await fetch(`/api/posts/${postId}/publish`, { method: "POST" });
