@@ -81,6 +81,9 @@ export interface InstagramAccount {
   instagramBusinessAccountId: string;
   facebookPageId?: string;
   username: string;
+  profilePictureUrl?: string;
+  /** Long-lived Meta user token used for business-level APIs (e.g. /me/businesses). */
+  userAccessToken?: string;
   accessToken: string;
   connectedAt: string;
   /** Auto-detected from profile (bio, username). Used to set niche for captions. */

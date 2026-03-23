@@ -10,7 +10,12 @@ export async function GET(request: NextRequest) {
     const account = accounts[0] ?? null;
     return NextResponse.json(
       account
-        ? { connected: true, username: account.username, suggestedNiche: account.suggestedNiche ?? null }
+        ? {
+            connected: true,
+            username: account.username,
+            profilePictureUrl: account.profilePictureUrl,
+            suggestedNiche: account.suggestedNiche ?? null,
+          }
         : { connected: false }
     );
   } catch (e) {

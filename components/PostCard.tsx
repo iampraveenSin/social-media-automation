@@ -95,6 +95,16 @@ export function PostCard({ post, onPublishNow }: PostCardProps) {
             {publishing ? "Publishing…" : "Publish now"}
           </button>
         )}
+        {post.status === "published" && post.instagramMediaId && (
+          <a
+            href={`/api/posts/${post.id}/instagram-link`}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-2 inline-flex rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-800 transition hover:bg-emerald-100"
+          >
+            View on Instagram
+          </a>
+        )}
       </div>
     </motion.article>
   );

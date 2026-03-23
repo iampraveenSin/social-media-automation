@@ -12,6 +12,11 @@ import { LogoSettings } from "@/components/LogoSettings";
 import { SchedulePicker } from "@/components/SchedulePicker";
 import { PostCard } from "@/components/PostCard";
 import { PostPreview } from "@/components/PostPreview";
+import { MessagingPanel } from "@/components/MessagingPanel";
+import { PageEngagementPanel } from "@/components/PageEngagementPanel";
+import { CommentsPanel } from "@/components/CommentsPanel";
+import { BusinessPortfolioPanel } from "@/components/BusinessPortfolioPanel";
+import { InstagramProfilePanel } from "@/components/InstagramProfilePanel";
 import { useAppStore } from "@/store/useAppStore";
 import { buildCollageBlob } from "@/lib/collage";
 import { markDriveFileIdsAsPosted } from "@/lib/drive-pick-round";
@@ -21,6 +26,7 @@ import type { RecurrenceFrequency } from "@/lib/types";
 import { DEFAULT_POST_TIMES } from "@/lib/types";
 
 export default function DashboardPage() {
+  type PageOption = { id: string; name: string };
   const {
     caption,
     hashtags,
@@ -93,7 +99,7 @@ export default function DashboardPage() {
     };
   };
 
-  const [account, setAccount] = useState<{ connected: boolean; username?: string; suggestedNiche?: string | null }>({ connected: false });
+  const [account, setAccount] = useState<{ connected: boolean; username?: string; profilePictureUrl?: string; suggestedNiche?: string | null }>({ connected: false });
   const [drive, setDrive] = useState<{ connected: boolean; folderId?: string | null }>({ connected: false });
   const [analyzingAccount, setAnalyzingAccount] = useState(false);
   const [scheduling, setScheduling] = useState(false);
@@ -104,7 +110,7 @@ export default function DashboardPage() {
   const [publishing, setPublishing] = useState(false);
   const [scheduleWarning, setScheduleWarning] = useState<string | null>(null);
   const [queueStatus, setQueueStatus] = useState<{ redisOk: boolean } | null>(null);
-  const [activeTab, setActiveTab] = useState<"create" | "scheduled">("create");
+  const [activeTab, setActiveTab] = useState<"create" | "scheduled" | "messages" | "engagement" | "comments" | "business" | "profile">("create");
   const [recurrence, setRecurrence] = useState<{
     enabled: boolean;
     frequency: RecurrenceFrequency;
@@ -116,6 +122,11 @@ export default function DashboardPage() {
     audience?: string | null;
   }>({ enabled: false, frequency: "daily", nextRunAt: null, postTimes: DEFAULT_POST_TIMES });
   const [recurrenceSaving, setRecurrenceSaving] = useState(false);
+  const [needsPageSelection, setNeedsPageSelection] = useState(false);
+  const [pagesLoading, setPagesLoading] = useState(false);
+  const [pages, setPages] = useState<PageOption[]>([]);
+  const [selectingPageId, setSelectingPageId] = useState<string | null>(null);
+  const [pageSelectionMessage, setPageSelectionMessage] = useState<string | null>(null);
   const redirectingToLogin = useRef(false);
   const recurrenceInitialLoadDone = useRef(false);
 
@@ -278,6 +289,16 @@ export default function DashboardPage() {
   useEffect(() => {
     const params = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
     if (params.get("connected") === "1") setAccount((a) => ({ ...a, connected: true }));
+    if (params.get("instagram_page_select") === "1") {
+      setNeedsPageSelection(true);
+      setPageSelectionMessage(null);
+      setPagesLoading(true);
+      fetch("/api/auth/instagram/pages", { credentials: "include" })
+        .then((r) => r.json())
+        .then((d) => setPages(Array.isArray(d.pages) ? d.pages : []))
+        .catch(() => setPages([]))
+        .finally(() => setPagesLoading(false));
+    }
     if (params.get("drive_connected") === "1") setDrive((d) => ({ ...d, connected: true }));
     const err = params.get("error");
     if (err) {
@@ -311,6 +332,47 @@ export default function DashboardPage() {
       }
     }
   }, []);
+
+  const handleSelectInstagramPage = async (page: PageOption) => {
+    setSelectingPageId(page.id);
+    setPageSelectionMessage(null);
+    try {
+      const res = await fetch("/api/auth/instagram/select-page", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ pageId: page.id }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        connected?: boolean;
+        username?: string;
+        profilePictureUrl?: string;
+        selectedPageName?: string;
+        error?: string;
+      };
+      if (!res.ok || !data.connected) throw new Error(data.error ?? "Failed to connect selected page");
+      setAccount((a) => ({
+        ...a,
+        connected: true,
+        username: data.username,
+        profilePictureUrl: data.profilePictureUrl,
+      }));
+      setNeedsPageSelection(false);
+      setPages([]);
+      setPageSelectionMessage(
+        `Connected page "${data.selectedPageName ?? page.name}" with Instagram @${data.username ?? "instagram"}.`
+      );
+      if (typeof window !== "undefined") {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("instagram_page_select");
+        window.history.replaceState({}, "", url.pathname + url.search);
+      }
+    } catch (e) {
+      setPageSelectionMessage(e instanceof Error ? e.message : "Failed to connect selected page");
+    } finally {
+      setSelectingPageId(null);
+    }
+  };
 
   const handleSchedule = async () => {
     if (selectedMediaIds.length === 0) {
@@ -487,6 +549,46 @@ export default function DashboardPage() {
             <span className="text-lg">📋</span>
             Posts
           </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("messages")}
+            className={`flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-sm font-medium transition ${activeTab === "messages" ? "bg-amber-100 text-amber-900 border border-amber-300" : "text-stone-600 hover:bg-amber-50 hover:text-stone-900"}`}
+          >
+            <span className="text-lg">💬</span>
+            Messages
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("engagement")}
+            className={`flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-sm font-medium transition ${activeTab === "engagement" ? "bg-amber-100 text-amber-900 border border-amber-300" : "text-stone-600 hover:bg-amber-50 hover:text-stone-900"}`}
+          >
+            <span className="text-lg">📊</span>
+            Engagement
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("comments")}
+            className={`flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-sm font-medium transition ${activeTab === "comments" ? "bg-amber-100 text-amber-900 border border-amber-300" : "text-stone-600 hover:bg-amber-50 hover:text-stone-900"}`}
+          >
+            <span className="text-lg">💭</span>
+            Comments
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("business")}
+            className={`flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-sm font-medium transition ${activeTab === "business" ? "bg-amber-100 text-amber-900 border border-amber-300" : "text-stone-600 hover:bg-amber-50 hover:text-stone-900"}`}
+          >
+            <span className="text-lg">🏢</span>
+            Business
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("profile")}
+            className={`flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-sm font-medium transition ${activeTab === "profile" ? "bg-amber-100 text-amber-900 border border-amber-300" : "text-stone-600 hover:bg-amber-50 hover:text-stone-900"}`}
+          >
+            <span className="text-lg">👤</span>
+            Profile
+          </button>
         </nav>
         <div className="p-4 border-t border-amber-200 space-y-3">
           <div className="rounded-lg bg-amber-50 p-3 space-y-2">
@@ -618,17 +720,58 @@ export default function DashboardPage() {
               </div>
             )}
 
+            {needsPageSelection && (
+              <div className="mb-6 rounded-xl border border-amber-300 bg-amber-50 px-4 py-4">
+                <p className="text-sm font-semibold text-amber-900">Select a Facebook Page to connect</p>
+                <p className="mt-1 text-xs text-stone-700">
+                  We fetched your Pages after Facebook Login. Choose the Page you want to connect.
+                </p>
+                <div className="mt-3 space-y-2">
+                  {pagesLoading ? (
+                    <p className="text-sm text-stone-700">Loading pages...</p>
+                  ) : pages.length === 0 ? (
+                    <p className="text-sm text-stone-700">No Pages found. Try connecting again.</p>
+                  ) : (
+                    pages.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => handleSelectInstagramPage(p)}
+                        disabled={selectingPageId !== null}
+                        className="flex w-full items-center justify-between rounded-lg border border-amber-300 bg-white px-3 py-2 text-left hover:bg-amber-50 disabled:opacity-50"
+                      >
+                        <span className="text-sm text-stone-800">{p.name}</span>
+                        <span className="text-xs font-medium text-amber-800">
+                          {selectingPageId === p.id ? "Connecting..." : "Connect this Page"}
+                        </span>
+                      </button>
+                    ))
+                  )}
+                </div>
+                {pageSelectionMessage && (
+                  <p className="mt-3 text-sm text-amber-900">{pageSelectionMessage}</p>
+                )}
+              </div>
+            )}
+
+            {!needsPageSelection && pageSelectionMessage && (
+              <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                {pageSelectionMessage}
+              </div>
+            )}
+
             {/* Accounts */}
             <div className="grid gap-4 sm:grid-cols-2 mb-8">
               <div className="rounded-xl border border-amber-200 bg-[#fffef9] p-5">
                 <ConnectInstagram
                   connected={account.connected}
                   username={account.username}
+                  profilePictureUrl={account.profilePictureUrl}
                   onDisconnect={async () => {
                     await fetch("/api/auth/instagram/disconnect", { method: "POST" });
                     const res = await fetch("/api/accounts");
                     const data = await res.json();
-                    setAccount({ connected: data.connected ?? false, username: data.username });
+                    setAccount({ connected: data.connected ?? false, username: data.username, profilePictureUrl: data.profilePictureUrl });
                   }}
                 />
               </div>
@@ -897,6 +1040,56 @@ export default function DashboardPage() {
                 </div>
               )}
             </motion.div>
+          </>
+        )}
+
+        {activeTab === "messages" && (
+          <>
+            <div className="mb-8">
+              <h2 className="font-display text-3xl font-medium text-stone-800">Messages</h2>
+              <p className="mt-1 text-sm text-stone-700">View Instagram DMs and reply from your dashboard.</p>
+            </div>
+            <MessagingPanel connected={account.connected} />
+          </>
+        )}
+
+        {activeTab === "engagement" && (
+          <>
+            <div className="mb-8">
+              <h2 className="font-display text-3xl font-medium text-stone-800">Engagement</h2>
+              <p className="mt-1 text-sm text-stone-700">View Page posts and engagement metrics (reactions, comments, shares).</p>
+            </div>
+            <PageEngagementPanel connected={account.connected} />
+          </>
+        )}
+
+        {activeTab === "comments" && (
+          <>
+            <div className="mb-8">
+              <h2 className="font-display text-3xl font-medium text-stone-800">Comments</h2>
+              <p className="mt-1 text-sm text-stone-700">View and manage comments on your published Instagram posts.</p>
+            </div>
+            <CommentsPanel connected={account.connected} />
+          </>
+        )}
+
+        {activeTab === "business" && (
+          <>
+            <div className="mb-8">
+              <h2 className="font-display text-3xl font-medium text-stone-800">Business</h2>
+              <p className="mt-1 text-sm text-stone-700">View Meta business portfolio information for the connected account.</p>
+            </div>
+            <BusinessPortfolioPanel connected={account.connected} />
+          </>
+        )}
+
+        {activeTab === "profile" && (
+          <>
+            <div className="mb-8">
+              <h2 className="font-display text-3xl font-medium text-stone-800">Profile</h2>
+              <p className="mt-1 text-sm text-stone-700">View Instagram profile information and existing media/posts.</p>
+            </div>
+            <InstagramProfilePanel connected={account.connected} />
           </>
         )}
         </div>

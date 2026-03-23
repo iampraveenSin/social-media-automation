@@ -271,6 +271,22 @@ export async function getInstagramProfile(
   }
 }
 
+/** Resolve permalink for a published Instagram media id. */
+export async function getInstagramMediaPermalink(
+  mediaId: string,
+  accessToken: string
+): Promise<string | null> {
+  const url = `${META_GRAPH_BASE}/${encodeURIComponent(mediaId)}?fields=permalink&access_token=${encodeURIComponent(accessToken)}`;
+  try {
+    const res = await fetch(url, { cache: "no-store" });
+    const data = (await res.json()) as { permalink?: string; error?: { message?: string } };
+    if (!res.ok || data.error || !data.permalink) return null;
+    return data.permalink;
+  } catch {
+    return null;
+  }
+}
+
 /** Use http for localhost so OAuth callback works (dev server has no HTTPS). */
 function normalizeOriginForOAuth(origin: string): string {
   const base = origin.replace(/\/+$/, "");
@@ -289,6 +305,9 @@ export function getInstagramLoginUrl(baseUrl?: string): string {
   const origin = normalizeOriginForOAuth(raw);
   const redirectUri = `${origin}/api/auth/instagram/callback`;
   const scopes = [
+    "instagram_basic",
+    "instagram_business_basic",
+    "instagram_manage_messages",
     "instagram_content_publish",
     "instagram_manage_comments",
     "pages_show_list",

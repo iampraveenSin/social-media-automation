@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { saveAccount } from "@/lib/store";
 import { getSessionFromRequest } from "@/lib/auth";
-import { inferNicheFromProfile } from "@/lib/openai";
-import { v4 as uuidv4 } from "uuid";
+import {
+  INSTAGRAM_PENDING_COOKIE,
+  encodePendingInstagramConnect,
+  fetchFacebookPages,
+} from "@/lib/instagram-connect-flow";
 
 const META_GRAPH_BASE = "https://graph.facebook.com/v25.0";
 
@@ -55,102 +57,22 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(`${baseUrl}/dashboard?error=me_failed`);
   }
 
-  const pagesUrl = `${META_GRAPH_BASE}/me/accounts?fields=id,name,access_token&access_token=${accessToken}`;
-  const pagesRes = await fetch(pagesUrl);
-  const pagesData = (await pagesRes.json()) as {
-    data?: Array<{ id: string; name: string; access_token: string }>;
-    error?: { message: string; code?: number };
-  };
-  const pages = pagesData.data ?? [];
+  const { pages, error: pagesError } = await fetchFacebookPages(accessToken);
   if (pages.length === 0) {
     const params = new URLSearchParams({ error: "no_page" });
-    if (pagesData.error?.message) {
-      params.set("hint", pagesData.error.message.slice(0, 100));
+    if (pagesError) {
+      params.set("hint", pagesError.slice(0, 100));
     }
     return NextResponse.redirect(`${baseUrl}/dashboard?${params.toString()}`);
   }
-
-  // Find the first page that has an Instagram Business Account linked
-  let pageWithIg: { id: string; name: string; access_token: string } | null = null;
-  let igBusinessId: string | null = null;
-  const pageNames: string[] = [];
-
-  for (const page of pages) {
-    pageNames.push(page.name);
-    const pageToken = page.access_token;
-
-    // 1) Try standard field (works when Page is linked from Instagram / not only via Business Manager)
-    const igAccountUrl = `${META_GRAPH_BASE}/${page.id}?fields=instagram_business_account&access_token=${pageToken}`;
-    const igRes = await fetch(igAccountUrl);
-    const igData = (await igRes.json()) as {
-      instagram_business_account?: { id: string };
-      error?: { message: string; code?: number };
-    };
-    if (!igData.error) {
-      const id = igData.instagram_business_account?.id;
-      if (id) {
-        pageWithIg = page;
-        igBusinessId = id;
-        break;
-      }
-    }
-
-    // 2) Fallback: page_backed_instagram_accounts (sometimes returns IG when instagram_business_account is empty)
-    const backedUrl = `${META_GRAPH_BASE}/${page.id}/page_backed_instagram_accounts?fields=id,username&access_token=${pageToken}`;
-    const backedRes = await fetch(backedUrl);
-    const backedData = (await backedRes.json()) as {
-      data?: Array<{ id: string; username?: string }>;
-      error?: { message: string };
-    };
-    if (!backedData.error && backedData.data && backedData.data.length > 0) {
-      pageWithIg = page;
-      igBusinessId = backedData.data[0].id;
-      break;
-    }
-  }
-
-  if (!pageWithIg || !igBusinessId) {
-    const params = new URLSearchParams({
-      error: "no_instagram_account",
-      reason: "not_linked",
-    });
-    if (pageNames.length > 0) {
-      params.set("pages", pageNames.slice(0, 3).join(", "));
-    }
-    return NextResponse.redirect(`${baseUrl}/dashboard?${params.toString()}`);
-  }
-
-  const igProfileUrl = `${META_GRAPH_BASE}/${igBusinessId}?fields=username,name,biography&access_token=${pageWithIg.access_token}`;
-  const profileRes = await fetch(igProfileUrl);
-  const profileData = (await profileRes.json()) as { username?: string; name?: string; biography?: string };
-  const username = profileData.username ?? "instagram";
-
-  const newAccount = {
-    id: uuidv4(),
-    userId: meData.id ?? "user",
-    appUserId: session.userId,
-    instagramBusinessAccountId: igBusinessId,
-    facebookPageId: pageWithIg.id,
-    username,
-    accessToken: pageWithIg.access_token,
-    connectedAt: new Date().toISOString(),
-  };
-  await saveAccount(newAccount);
-
-  try {
-    const suggestedNiche = await inferNicheFromProfile({
-      username: profileData.username ?? "",
-      name: profileData.name,
-      biography: profileData.biography,
-    });
-    await saveAccount({
-      ...newAccount,
-      suggestedNiche,
-      analyzedAt: new Date().toISOString(),
-    });
-  } catch {
-    // Non-blocking: niche can be analyzed later from dashboard
-  }
-
-  return NextResponse.redirect(`${baseUrl}/dashboard?connected=1`);
+  const pending = encodePendingInstagramConnect({
+    accessToken,
+    metaUserId: meData.id ?? "user",
+  });
+  const res = NextResponse.redirect(`${baseUrl}/dashboard?instagram_page_select=1`);
+  res.headers.append(
+    "Set-Cookie",
+    `${INSTAGRAM_PENDING_COOKIE}=${pending}; Path=/; HttpOnly; SameSite=Lax; Max-Age=600`
+  );
+  return res;
 }

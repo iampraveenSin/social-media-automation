@@ -6,10 +6,11 @@ import { motion } from "framer-motion";
 interface ConnectInstagramProps {
   connected: boolean;
   username?: string;
+  profilePictureUrl?: string;
   onDisconnect?: () => void | Promise<void>;
 }
 
-export function ConnectInstagram({ connected, username, onDisconnect }: ConnectInstagramProps) {
+export function ConnectInstagram({ connected, username, profilePictureUrl, onDisconnect }: ConnectInstagramProps) {
   const [disconnecting, setDisconnecting] = useState(false);
 
   const handleDisconnect = async () => {
@@ -29,7 +30,15 @@ export function ConnectInstagram({ connected, username, onDisconnect }: ConnectI
         animate={{ opacity: 1, y: 0 }}
         className="flex flex-wrap items-center gap-4 rounded-2xl border border-amber-300 bg-amber-50 px-5 py-4"
       >
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-200 text-lg text-amber-700">✓</span>
+        {profilePictureUrl ? (
+          <img
+            src={profilePictureUrl}
+            alt="Instagram profile"
+            className="h-10 w-10 shrink-0 rounded-xl border border-amber-300 object-cover"
+          />
+        ) : (
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-200 text-lg text-amber-700">✓</span>
+        )}
         <div className="min-w-0 flex-1">
           <p className="font-medium text-amber-900">Instagram connected</p>
           <p className="text-sm text-stone-700">@{username} — posts go to Instagram and your linked Facebook Page.</p>
