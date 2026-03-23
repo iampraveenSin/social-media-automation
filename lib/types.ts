@@ -80,10 +80,13 @@ export interface InstagramAccount {
   appUserId: string;
   instagramBusinessAccountId: string;
   facebookPageId?: string;
+  /** Name of the connected Facebook Page. */
+  facebookPageName?: string;
   username: string;
+  /** Instagram profile picture URL (from Meta Graph API). */
   profilePictureUrl?: string;
-  /** Long-lived Meta user token used for business-level APIs (e.g. /me/businesses). */
-  userAccessToken?: string;
+  /** Total number of media items on the Instagram account. */
+  mediaCount?: number;
   accessToken: string;
   connectedAt: string;
   /** Auto-detected from profile (bio, username). Used to set niche for captions. */

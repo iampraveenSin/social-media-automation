@@ -6,11 +6,13 @@ import { motion } from "framer-motion";
 interface ConnectInstagramProps {
   connected: boolean;
   username?: string;
-  profilePictureUrl?: string;
+  profilePictureUrl?: string | null;
+  facebookPageName?: string | null;
+  mediaCount?: number | null;
   onDisconnect?: () => void | Promise<void>;
 }
 
-export function ConnectInstagram({ connected, username, profilePictureUrl, onDisconnect }: ConnectInstagramProps) {
+export function ConnectInstagram({ connected, username, profilePictureUrl, facebookPageName, mediaCount, onDisconnect }: ConnectInstagramProps) {
   const [disconnecting, setDisconnecting] = useState(false);
 
   const handleDisconnect = async () => {
@@ -33,15 +35,17 @@ export function ConnectInstagram({ connected, username, profilePictureUrl, onDis
         {profilePictureUrl ? (
           <img
             src={profilePictureUrl}
-            alt="Instagram profile"
-            className="h-10 w-10 shrink-0 rounded-xl border border-amber-300 object-cover"
+            alt={`@${username}`}
+            className="h-10 w-10 shrink-0 rounded-xl object-cover"
           />
         ) : (
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-200 text-lg text-amber-700">✓</span>
         )}
         <div className="min-w-0 flex-1">
           <p className="font-medium text-amber-900">Instagram connected</p>
-          <p className="text-sm text-stone-700">@{username} — posts go to Instagram and your linked Facebook Page.</p>
+          <p className="text-sm text-stone-700">
+            @{username}{facebookPageName ? ` · ${facebookPageName}` : ""}{mediaCount != null ? ` · ${mediaCount} posts` : ""} — publishing to Instagram &amp; Facebook Page.
+          </p>
         </div>
         {onDisconnect && (
           <button

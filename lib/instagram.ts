@@ -251,37 +251,23 @@ export async function publishToFacebookPage(
   return { id: json.id ?? "" };
 }
 
-/** Fetch Instagram profile (username, name, biography) for account analysis. */
+/** Fetch Instagram profile (username, name, biography, profile_picture_url, media_count) for account analysis and display. */
 export async function getInstagramProfile(
   igUserId: string,
   accessToken: string
-): Promise<{ username: string; name?: string; biography?: string } | null> {
-  const url = `${META_GRAPH_BASE}/${igUserId}?fields=username,name,biography&access_token=${encodeURIComponent(accessToken)}`;
+): Promise<{ username: string; name?: string; biography?: string; profilePictureUrl?: string; mediaCount?: number } | null> {
+  const url = `${META_GRAPH_BASE}/${igUserId}?fields=username,name,biography,profile_picture_url,media_count&access_token=${encodeURIComponent(accessToken)}`;
   try {
     const res = await fetch(url);
-    const data = (await res.json()) as { username?: string; name?: string; biography?: string; error?: { message: string } };
+    const data = (await res.json()) as { username?: string; name?: string; biography?: string; profile_picture_url?: string; media_count?: number; error?: { message: string } };
     if (data.error) return null;
     return {
       username: data.username ?? "",
       name: data.name,
       biography: data.biography,
+      profilePictureUrl: data.profile_picture_url,
+      mediaCount: data.media_count,
     };
-  } catch {
-    return null;
-  }
-}
-
-/** Resolve permalink for a published Instagram media id. */
-export async function getInstagramMediaPermalink(
-  mediaId: string,
-  accessToken: string
-): Promise<string | null> {
-  const url = `${META_GRAPH_BASE}/${encodeURIComponent(mediaId)}?fields=permalink&access_token=${encodeURIComponent(accessToken)}`;
-  try {
-    const res = await fetch(url, { cache: "no-store" });
-    const data = (await res.json()) as { permalink?: string; error?: { message?: string } };
-    if (!res.ok || data.error || !data.permalink) return null;
-    return data.permalink;
   } catch {
     return null;
   }
@@ -306,11 +292,8 @@ export function getInstagramLoginUrl(baseUrl?: string): string {
   const redirectUri = `${origin}/api/auth/instagram/callback`;
   const scopes = [
     "instagram_basic",
-    "instagram_manage_messages",
     "instagram_content_publish",
-    "instagram_manage_comments",
     "pages_show_list",
-    "pages_read_engagement",
     "business_management",
   ];
   const configId = process.env.META_CONFIG_ID ?? "";

@@ -1,66 +1,78 @@
 import { NextRequest, NextResponse } from "next/server";
-import { v4 as uuidv4 } from "uuid";
 import { getSessionFromRequest } from "@/lib/auth";
 import { saveAccount } from "@/lib/store";
 import { inferNicheFromProfile } from "@/lib/openai";
-import {
-  INSTAGRAM_PENDING_COOKIE,
-  decodePendingInstagramConnect,
-  fetchFacebookPages,
-  findInstagramForPage,
-} from "@/lib/instagram-connect-flow";
+import { cookies } from "next/headers";
+import { v4 as uuidv4 } from "uuid";
 
 const META_GRAPH_BASE = "https://graph.facebook.com/v25.0";
 
+/**
+ * POST /api/auth/instagram/select-page
+ * Body: { pageId: string }
+ * Completes the Instagram connection using the selected Facebook Page.
+ */
 export async function POST(request: NextRequest) {
   const session = getSessionFromRequest(request);
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
-  const pendingRaw = request.cookies.get(INSTAGRAM_PENDING_COOKIE)?.value ?? null;
-  const pending = decodePendingInstagramConnect(pendingRaw);
-  if (!pending) return NextResponse.json({ error: "No pending Instagram connection" }, { status: 400 });
-
-  const body = (await request.json().catch(() => ({}))) as { pageId?: string };
-  const pageId = typeof body.pageId === "string" ? body.pageId : "";
+  const { pageId } = (await request.json()) as { pageId?: string };
   if (!pageId) return NextResponse.json({ error: "pageId is required" }, { status: 400 });
 
-  const { pages, error } = await fetchFacebookPages(pending.accessToken);
-  if (error) return NextResponse.json({ error }, { status: 400 });
-  const selectedPage = pages.find((p) => p.id === pageId);
-  if (!selectedPage) return NextResponse.json({ error: "Selected page not found" }, { status: 400 });
+  const cookieStore = await cookies();
+  const pendingRaw = cookieStore.get("ig_pending_pages")?.value;
+  const pendingToken = cookieStore.get("ig_pending_token")?.value;
+  const pendingUserId = cookieStore.get("ig_pending_user_id")?.value;
 
-  const { igBusinessId } = await findInstagramForPage(selectedPage.id, selectedPage.access_token);
-  if (!igBusinessId) {
-    return NextResponse.json(
-      { error: "Selected page has no linked Instagram Business/Creator account." },
-      { status: 400 }
-    );
+  if (!pendingRaw || !pendingToken || !pendingUserId) {
+    return NextResponse.json({ error: "No pending page data. Please reconnect Instagram." }, { status: 400 });
   }
 
-  const igProfileUrl = `${META_GRAPH_BASE}/${igBusinessId}?fields=username,name,biography,profile_picture_url&access_token=${selectedPage.access_token}`;
+  let pages: Array<{
+    pageId: string;
+    pageName: string;
+    pageAccessToken: string;
+    igBusinessId: string;
+    igUsername: string;
+  }>;
+  try {
+    pages = JSON.parse(decodeURIComponent(pendingRaw));
+  } catch {
+    return NextResponse.json({ error: "Invalid pending page data" }, { status: 400 });
+  }
+
+  const selected = pages.find((p) => p.pageId === pageId);
+  if (!selected) {
+    return NextResponse.json({ error: "Selected page not found" }, { status: 404 });
+  }
+
+  // Fetch full profile for the selected Instagram account
+  const igProfileUrl = `${META_GRAPH_BASE}/${selected.igBusinessId}?fields=username,name,biography,profile_picture_url,media_count&access_token=${selected.pageAccessToken}`;
   const profileRes = await fetch(igProfileUrl);
   const profileData = (await profileRes.json()) as {
     username?: string;
     name?: string;
     biography?: string;
     profile_picture_url?: string;
+    media_count?: number;
   };
-  const username = profileData.username ?? "instagram";
 
   const newAccount = {
     id: uuidv4(),
-    userId: pending.metaUserId,
+    userId: pendingUserId,
     appUserId: session.userId,
-    instagramBusinessAccountId: igBusinessId,
-    facebookPageId: selectedPage.id,
-    username,
+    instagramBusinessAccountId: selected.igBusinessId,
+    facebookPageId: selected.pageId,
+    facebookPageName: selected.pageName,
+    username: profileData.username ?? selected.igUsername,
     profilePictureUrl: profileData.profile_picture_url,
-    userAccessToken: pending.accessToken,
-    accessToken: selectedPage.access_token,
+    mediaCount: profileData.media_count,
+    accessToken: selected.pageAccessToken,
     connectedAt: new Date().toISOString(),
   };
   await saveAccount(newAccount);
 
+  // Infer niche in background
   try {
     const suggestedNiche = await inferNicheFromProfile({
       username: profileData.username ?? "",
@@ -73,19 +85,13 @@ export async function POST(request: NextRequest) {
       analyzedAt: new Date().toISOString(),
     });
   } catch {
-    // Non-blocking niche inference
+    // Non-blocking
   }
 
-  const res = NextResponse.json({
-    connected: true,
-    username: newAccount.username,
-    profilePictureUrl: newAccount.profilePictureUrl,
-    selectedPageName: selectedPage.name,
-  });
-  res.headers.append(
-    "Set-Cookie",
-    `${INSTAGRAM_PENDING_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`
-  );
-  return res;
-}
+  // Clear pending cookies
+  cookieStore.delete("ig_pending_pages");
+  cookieStore.delete("ig_pending_token");
+  cookieStore.delete("ig_pending_user_id");
 
+  return NextResponse.json({ success: true });
+}

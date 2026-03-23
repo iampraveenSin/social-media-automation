@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { saveAccount } from "@/lib/store";
 import { getSessionFromRequest } from "@/lib/auth";
-import {
-  INSTAGRAM_PENDING_COOKIE,
-  encodePendingInstagramConnect,
-  fetchFacebookPages,
-} from "@/lib/instagram-connect-flow";
+import { inferNicheFromProfile } from "@/lib/openai";
+import { v4 as uuidv4 } from "uuid";
 
 const META_GRAPH_BASE = "https://graph.facebook.com/v25.0";
 
@@ -16,6 +14,15 @@ function originForLocalhost(origin: string): string {
   } catch {
     return origin;
   }
+}
+
+interface PageWithInstagram {
+  pageId: string;
+  pageName: string;
+  pageAccessToken: string;
+  igBusinessId: string;
+  igUsername: string;
+  igProfilePicture?: string;
 }
 
 export async function GET(request: NextRequest) {
@@ -57,22 +64,162 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(`${baseUrl}/dashboard?error=me_failed`);
   }
 
-  const { pages, error: pagesError } = await fetchFacebookPages(accessToken);
+  const pagesUrl = `${META_GRAPH_BASE}/me/accounts?fields=id,name,access_token&access_token=${accessToken}`;
+  const pagesRes = await fetch(pagesUrl);
+  const pagesData = (await pagesRes.json()) as {
+    data?: Array<{ id: string; name: string; access_token: string }>;
+    error?: { message: string; code?: number };
+  };
+  const pages = pagesData.data ?? [];
   if (pages.length === 0) {
     const params = new URLSearchParams({ error: "no_page" });
-    if (pagesError) {
-      params.set("hint", pagesError.slice(0, 100));
+    if (pagesData.error?.message) {
+      params.set("hint", pagesData.error.message.slice(0, 100));
     }
     return NextResponse.redirect(`${baseUrl}/dashboard?${params.toString()}`);
   }
-  const pending = encodePendingInstagramConnect({
-    accessToken,
-    metaUserId: meData.id ?? "user",
-  });
-  const res = NextResponse.redirect(`${baseUrl}/dashboard?instagram_page_select=1`);
-  res.headers.append(
-    "Set-Cookie",
-    `${INSTAGRAM_PENDING_COOKIE}=${pending}; Path=/; HttpOnly; SameSite=Lax; Max-Age=600`
-  );
-  return res;
+
+  // Collect ALL pages that have an Instagram Business Account linked
+  const pagesWithIg: PageWithInstagram[] = [];
+
+  for (const page of pages) {
+    const pageToken = page.access_token;
+
+    // 1) Try standard field
+    const igAccountUrl = `${META_GRAPH_BASE}/${page.id}?fields=instagram_business_account&access_token=${pageToken}`;
+    const igRes = await fetch(igAccountUrl);
+    const igData = (await igRes.json()) as {
+      instagram_business_account?: { id: string };
+      error?: { message: string; code?: number };
+    };
+    if (!igData.error && igData.instagram_business_account?.id) {
+      // Fetch IG profile to get username and picture
+      const profileUrl = `${META_GRAPH_BASE}/${igData.instagram_business_account.id}?fields=username,profile_picture_url&access_token=${pageToken}`;
+      const profileRes = await fetch(profileUrl);
+      const profileData = (await profileRes.json()) as { username?: string; profile_picture_url?: string };
+      pagesWithIg.push({
+        pageId: page.id,
+        pageName: page.name,
+        pageAccessToken: pageToken,
+        igBusinessId: igData.instagram_business_account.id,
+        igUsername: profileData.username ?? "instagram",
+        igProfilePicture: profileData.profile_picture_url,
+      });
+      continue;
+    }
+
+    // 2) Fallback: page_backed_instagram_accounts
+    const backedUrl = `${META_GRAPH_BASE}/${page.id}/page_backed_instagram_accounts?fields=id,username&access_token=${pageToken}`;
+    const backedRes = await fetch(backedUrl);
+    const backedData = (await backedRes.json()) as {
+      data?: Array<{ id: string; username?: string }>;
+      error?: { message: string };
+    };
+    if (!backedData.error && backedData.data && backedData.data.length > 0) {
+      pagesWithIg.push({
+        pageId: page.id,
+        pageName: page.name,
+        pageAccessToken: pageToken,
+        igBusinessId: backedData.data[0].id,
+        igUsername: backedData.data[0].username ?? "instagram",
+      });
+    }
+  }
+
+  if (pagesWithIg.length === 0) {
+    const params = new URLSearchParams({
+      error: "no_instagram_account",
+      reason: "not_linked",
+    });
+    const pageNames = pages.map((p) => p.name);
+    if (pageNames.length > 0) {
+      params.set("pages", pageNames.slice(0, 3).join(", "));
+    }
+    return NextResponse.redirect(`${baseUrl}/dashboard?${params.toString()}`);
+  }
+
+  // If multiple pages have Instagram accounts, redirect to selection page
+  if (pagesWithIg.length > 1) {
+    // Store pages data in cookies (exclude access tokens from the public-facing cookie)
+    const publicPages = pagesWithIg.map((p) => ({
+      pageId: p.pageId,
+      pageName: p.pageName,
+      igBusinessId: p.igBusinessId,
+      igUsername: p.igUsername,
+      igProfilePicture: p.igProfilePicture,
+    }));
+
+    const response = NextResponse.redirect(`${baseUrl}/select-page`);
+    // Store full data (with tokens) for the select-page API to use
+    response.cookies.set("ig_pending_pages", encodeURIComponent(JSON.stringify(pagesWithIg)), {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 600, // 10 minutes
+      path: "/",
+    });
+    response.cookies.set("ig_pending_token", accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 600,
+      path: "/",
+    });
+    response.cookies.set("ig_pending_user_id", meData.id ?? "user", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 600,
+      path: "/",
+    });
+    // Also store public pages (no tokens) for the pages list endpoint
+    response.cookies.set("ig_pending_pages_public", encodeURIComponent(JSON.stringify(publicPages)), {
+      httpOnly: false,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 600,
+      path: "/",
+    });
+    return response;
+  }
+
+  // Single page with Instagram — auto-connect
+  const selected = pagesWithIg[0];
+
+  const igProfileUrl = `${META_GRAPH_BASE}/${selected.igBusinessId}?fields=username,name,biography,profile_picture_url,media_count&access_token=${selected.pageAccessToken}`;
+  const profileRes = await fetch(igProfileUrl);
+  const profileData = (await profileRes.json()) as { username?: string; name?: string; biography?: string; profile_picture_url?: string; media_count?: number };
+  const username = profileData.username ?? "instagram";
+
+  const newAccount = {
+    id: uuidv4(),
+    userId: meData.id ?? "user",
+    appUserId: session.userId,
+    instagramBusinessAccountId: selected.igBusinessId,
+    facebookPageId: selected.pageId,
+    facebookPageName: selected.pageName,
+    username,
+    profilePictureUrl: profileData.profile_picture_url,
+    mediaCount: profileData.media_count,
+    accessToken: selected.pageAccessToken,
+    connectedAt: new Date().toISOString(),
+  };
+  await saveAccount(newAccount);
+
+  try {
+    const suggestedNiche = await inferNicheFromProfile({
+      username: profileData.username ?? "",
+      name: profileData.name,
+      biography: profileData.biography,
+    });
+    await saveAccount({
+      ...newAccount,
+      suggestedNiche,
+      analyzedAt: new Date().toISOString(),
+    });
+  } catch {
+    // Non-blocking: niche can be analyzed later from dashboard
+  }
+
+  return NextResponse.redirect(`${baseUrl}/dashboard?connected=1`);
 }

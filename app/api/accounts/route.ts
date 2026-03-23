@@ -12,9 +12,10 @@ export async function GET(request: NextRequest) {
       account
         ? {
             connected: true,
-            userId: account.userId,
             username: account.username,
-            profilePictureUrl: account.profilePictureUrl,
+            profilePictureUrl: account.profilePictureUrl ?? null,
+            facebookPageName: account.facebookPageName ?? null,
+            mediaCount: account.mediaCount ?? null,
             suggestedNiche: account.suggestedNiche ?? null,
           }
         : { connected: false }
