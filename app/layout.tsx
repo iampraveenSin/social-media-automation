@@ -1,9 +1,24 @@
 import type { Metadata } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
 export const metadata: Metadata = {
-  title: "Automate — AI Social Media Automation",
-  description: "Connect Instagram, generate captions, add your logo, and schedule posts automatically.",
+  title: {
+    default: "Prnit — Social media management",
+    template: "%s | Prnit",
+  },
+  description:
+    "Manage Instagram and Facebook from one place: compose posts, schedule, auto-post from Google Drive, and keep your data under control.",
 };
 
 export default function RootLayout({
@@ -12,16 +27,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Poppins:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
-          rel="stylesheet"
-        />
-      </head>
-      <body className="antialiased font-sans" suppressHydrationWarning>
+    <html
+      lang="en"
+      className={`${geistSans.variable} ${geistMono.variable} h-full scroll-smooth antialiased`}
+      suppressHydrationWarning
+    >
+      <body
+        className="min-h-full flex flex-col font-sans"
+        suppressHydrationWarning
+      >
         {children}
       </body>
     </html>

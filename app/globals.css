@@ -1,47 +1,92 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f8f6f2;
-  --foreground: #1c1917;
-  --accent: #d97706;
-  --accent-soft: #b45309;
-  --accent-bg: #fef3c7;
-  --luxury-gold: #d97706;
-  --luxury-gold-soft: #b45309;
-  --luxury-cream: #1c1917;
-  --luxury-border: rgba(217, 119, 6, 0.25);
-  --luxury-panel: #fffef9;
-  --luxury-panel-hover: #fef3c7;
+  --background: #f4f6fb;
+  --foreground: #0c1222;
+  --muted: #5c6578;
+  --card: #ffffff;
+  --border: #e1e6f0;
+  --primary: #4338ca;
+  --primary-hover: #3730a3;
+  --primary-foreground: #ffffff;
+  --accent: #e8eafe;
+  --accent-strong: #c7d2fe;
+  --violet-glow: #7c3aed;
+  --teal-accent: #0d9488;
+  --shadow-sm: 0 1px 2px rgb(15 23 42 / 0.05);
+  --shadow-md: 0 8px 24px -4px rgb(15 23 42 / 0.08),
+    0 4px 12px -6px rgb(67 56 202 / 0.12);
+  --shadow-lg: 0 24px 48px -12px rgb(15 23 42 / 0.12),
+    0 12px 24px -8px rgb(67 56 202 / 0.15);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: "Poppins", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, monospace;
-  --font-display: "Cormorant Garamond", Georgia, serif;
+  --color-muted: var(--muted);
+  --color-card: var(--card);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-accent: var(--accent);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-outfit);
+  --shadow-soft: var(--shadow-md);
+  --shadow-elevated: var(--shadow-lg);
 }
 
 body {
-  background: var(--background) !important;
+  background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-sans);
-  min-height: 100vh;
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
 }
 
-/* All buttons and links use pointer cursor */
-button,
-a,
-[role="button"],
-[role="link"],
-label[for],
-input[type="submit"],
-input[type="button"],
-input[type="reset"],
-input[type="image"] {
+/* Pointer on interactive controls (preflight leaves buttons as default arrow). */
+button:not(:disabled),
+input[type="button"]:not(:disabled),
+input[type="submit"]:not(:disabled),
+input[type="reset"]:not(:disabled),
+input[type="checkbox"]:not(:disabled),
+input[type="radio"]:not(:disabled),
+input[type="file"]:not(:disabled),
+select:not(:disabled),
+[role="button"]:not([aria-disabled="true"]),
+a[href],
+label[for] {
   cursor: pointer;
 }
 
-.font-display {
-  font-family: var(--font-display);
+/* Marketing: display headings use Outfit from layout wrapper */
+.marketing-root h1,
+.marketing-root h2,
+.marketing-root h3 {
+  font-family: var(--font-outfit), var(--font-geist-sans), system-ui, sans-serif;
+}
+
+.marketing-hero-mesh {
+  background-color: var(--card);
+  background-image: radial-gradient(
+      ellipse 120% 80% at 100% -20%,
+      rgb(199 210 254 / 0.45),
+      transparent 55%
+    ),
+    radial-gradient(
+      ellipse 90% 70% at 0% 100%,
+      rgb(45 212 191 / 0.12),
+      transparent 50%
+    ),
+    radial-gradient(
+      circle at 70% 60%,
+      rgb(167 139 250 / 0.08),
+      transparent 45%
+    );
+}
+
+.marketing-dot-grid {
+  background-image: radial-gradient(
+    rgb(15 23 42 / 0.06) 1px,
+    transparent 1px
+  );
+  background-size: 20px 20px;
 }

@@ -1,45 +1,31 @@
 {
-  "name": "automation",
+  "name": "prnit_automation",
   "version": "0.1.0",
   "private": true,
-  "engines": {
-    "node": ">=18"
-  },
   "scripts": {
     "dev": "next dev",
-    "build": "next build --webpack",
+    "cron:once": "node scripts/process-scheduled-once.mjs",
+    "build": "next build",
     "start": "next start",
-    "lint": "eslint",
-    "worker": "tsx scripts/worker.ts"
+    "lint": "eslint"
   },
   "dependencies": {
-    "@ffmpeg/ffmpeg": "^0.12.15",
-    "@ffmpeg/util": "^0.12.2",
-    "@google/genai": "^1.41.0",
-    "@supabase/supabase-js": "^2.96.0",
-    "bullmq": "^5.69.3",
-    "date-fns": "^4.1.0",
-    "dotenv": "^17.3.1",
-    "framer-motion": "^12.34.0",
-    "ioredis": "^5.9.3",
-    "next": "16.1.6",
-    "openai": "^6.22.0",
-    "react": "19.2.3",
-    "react-dom": "19.2.3",
-    "sharp": "^0.34.5",
-    "uuid": "^13.0.0",
-    "zustand": "^5.0.11"
+    "@supabase/ssr": "^0.10.0",
+    "@supabase/supabase-js": "^2.101.1",
+    "googleapis": "^171.4.0",
+    "next": "16.2.2",
+    "openai": "^6.33.0",
+    "react": "19.2.4",
+    "react-dom": "19.2.4"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@types/uuid": "^10.0.0",
     "eslint": "^9",
-    "eslint-config-next": "16.1.6",
+    "eslint-config-next": "16.2.2",
     "tailwindcss": "^4",
-    "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5"
   }
 }
