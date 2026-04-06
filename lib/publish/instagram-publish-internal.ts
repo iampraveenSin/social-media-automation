@@ -8,10 +8,11 @@ import type { PublishMetaItem } from "@/lib/composer/publish-media";
 import { resolvePublishMediaItems } from "@/lib/composer/publish-media";
 import {
   publishInstagramCarousel,
+  publishInstagramReelVideo,
   publishInstagramSingleImage,
 } from "@/lib/meta/instagram-publish";
 import {
-  buildInstagramAccessibleImageUrls,
+  buildInstagramAccessibleMediaUrls,
   removeIgStagingPaths,
 } from "@/lib/publish/instagram-image-urls";
 import { insertPublishedPostRow } from "@/lib/publish/published-posts";
@@ -86,19 +87,18 @@ export async function publishToInstagramForUser(
   }
   const resolved = resolvedResult.resolved;
 
-  if (resolved.some((r) => isVideoMime(r.mimeType))) {
+  const hasVideo = resolved.some((r) => isVideoMime(r.mimeType));
+  const hasGif = resolved.some((r) => isGifMime(r.mimeType));
+  if ((hasVideo || hasGif) && resolved.length !== 1) {
     return {
       ok: false,
-      error: "Instagram publishing from Prnit supports photos only (no video yet).",
-    };
-  }
-  if (resolved.some((r) => isGifMime(r.mimeType))) {
-    return {
-      ok: false,
-      error: "GIF is not supported for Instagram from this composer — use still images.",
+      error:
+        "Instagram supports one video/GIF at a time (no mixed media posts).",
     };
   }
   if (
+    !hasVideo &&
+    !hasGif &&
     !resolved.every(
       (r) => isImageMime(r.mimeType) && isCollageImageMime(r.mimeType),
     )
@@ -109,7 +109,7 @@ export async function publishToInstagramForUser(
     };
   }
 
-  const urlPack = await buildInstagramAccessibleImageUrls(
+  const urlPack = await buildInstagramAccessibleMediaUrls(
     supabase,
     userId,
     items,
@@ -123,8 +123,14 @@ export async function publishToInstagramForUser(
   const igCaption = caption.trim().slice(0, 2200);
 
   try {
-    const pub =
-      urls.length === 1
+    const pub = hasVideo || hasGif
+      ? await publishInstagramReelVideo({
+          igUserId,
+          pageAccessToken: pageToken,
+          videoUrl: urls[0]!,
+          caption: igCaption,
+        })
+      : urls.length === 1
         ? await publishInstagramSingleImage({
             igUserId,
             pageAccessToken: pageToken,
@@ -149,8 +155,8 @@ export async function publishToInstagramForUser(
       facebookPostId: null,
       facebookMediaId: null,
       instagramMediaId: pub.mediaId,
-      mediaKind: urls.length === 1 ? "single_image" : "multi_image",
-      mediaCount: urls.length,
+      mediaKind: hasVideo ? "video" : hasGif ? "gif" : urls.length === 1 ? "single_image" : "multi_image",
+      mediaCount: hasVideo || hasGif ? 1 : urls.length,
       pageId,
       pageName,
       instagramUsername: igUsername,
@@ -159,7 +165,11 @@ export async function publishToInstagramForUser(
     return {
       ok: true,
       message:
-        urls.length > 1
+        hasVideo
+          ? "Published video Reel to Instagram."
+          : hasGif
+            ? "Published GIF as Reel to Instagram."
+          : urls.length > 1
           ? `Published ${urls.length}-image carousel to Instagram.`
           : "Published to Instagram.",
     };

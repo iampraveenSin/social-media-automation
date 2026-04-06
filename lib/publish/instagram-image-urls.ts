@@ -5,9 +5,14 @@ import type {
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 function extForMime(mime: string): string {
+  if (mime === "image/gif") return "gif";
   if (mime === "image/jpeg" || mime === "image/jpg") return "jpg";
   if (mime === "image/png") return "png";
   if (mime === "image/webp") return "webp";
+  if (mime === "video/mp4") return "mp4";
+  if (mime === "video/quicktime") return "mov";
+  if (mime === "video/webm") return "webm";
+  if (mime.startsWith("video/")) return "mp4";
   return "jpg";
 }
 
@@ -15,9 +20,10 @@ const SIGNED_TTL_SEC = 900;
 
 /**
  * Builds HTTPS URLs Instagram can fetch (signed URLs on your Supabase bucket).
+ * Supports image and video payloads.
  * Tracks staging paths under `.ig-staging/` for cleanup (Drive-sourced bytes).
  */
-export async function buildInstagramAccessibleImageUrls(
+export async function buildInstagramAccessibleMediaUrls(
   supabase: SupabaseClient,
   userId: string,
   items: PublishMetaItem[],
@@ -61,7 +67,7 @@ export async function buildInstagramAccessibleImageUrls(
         if (upErr) {
           return {
             ok: false,
-            error: upErr.message || "Could not stage Drive image for Instagram.",
+            error: upErr.message || "Could not stage Drive media for Instagram.",
           };
         }
         stagingPaths.push(path);
@@ -72,7 +78,7 @@ export async function buildInstagramAccessibleImageUrls(
           await supabase.storage.from("post_media").remove(stagingPaths);
           return {
             ok: false,
-            error: error?.message ?? "Could not sign staged image URL.",
+            error: error?.message ?? "Could not sign staged media URL.",
           };
         }
         urls.push(data.signedUrl);
