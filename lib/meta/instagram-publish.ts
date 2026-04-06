@@ -36,6 +36,21 @@ async function postPublish(
   return (await res.json()) as Record<string, unknown>;
 }
 
+async function getContainerStatus(
+  containerId: string,
+  pageAccessToken: string,
+): Promise<Record<string, unknown>> {
+  const url = new URL(`${BASE}/${containerId}`);
+  url.searchParams.set("fields", "status_code,status");
+  url.searchParams.set("access_token", pageAccessToken);
+  const res = await fetch(url.toString(), { cache: "no-store" });
+  return (await res.json()) as Record<string, unknown>;
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /** Single feed photo (JPEG/PNG URL must be reachable by Instagram). */
 export async function publishInstagramSingleImage(args: {
   igUserId: string;
@@ -124,6 +139,62 @@ export async function publishInstagramCarousel(args: {
     return {
       ok: false,
       error: readErr(pub as GraphErr, "Instagram carousel publish failed."),
+    };
+  }
+  return { ok: true, mediaId };
+}
+
+/** Single Instagram Reel video (URL must be reachable by Instagram). */
+export async function publishInstagramReelVideo(args: {
+  igUserId: string;
+  pageAccessToken: string;
+  videoUrl: string;
+  caption: string;
+}): Promise<{ ok: true; mediaId: string } | { ok: false; error: string }> {
+  const cap = args.caption.slice(0, 2200);
+  const create = await postForm(args.igUserId, {
+    access_token: args.pageAccessToken,
+    media_type: "REELS",
+    video_url: args.videoUrl,
+    caption: cap,
+  });
+  const createId = typeof create.id === "string" ? create.id : null;
+  if (!createId) {
+    return {
+      ok: false,
+      error: readErr(create as GraphErr, "Instagram Reel container failed."),
+    };
+  }
+
+  // Video containers are asynchronous; wait until Graph marks it finished.
+  const tries = 20;
+  for (let i = 0; i < tries; i++) {
+    const status = await getContainerStatus(createId, args.pageAccessToken);
+    const code = String(status.status_code ?? "").toUpperCase();
+    if (code === "FINISHED") {
+      break;
+    }
+    if (code === "ERROR" || code === "EXPIRED") {
+      return {
+        ok: false,
+        error: readErr(
+          status as GraphErr,
+          "Instagram Reel processing failed before publish.",
+        ),
+      };
+    }
+    await sleep(3000);
+  }
+
+  const pub = await postPublish(args.igUserId, {
+    access_token: args.pageAccessToken,
+    creation_id: createId,
+  });
+  const mediaId = typeof pub.id === "string" ? pub.id : null;
+  if (!mediaId) {
+    return {
+      ok: false,
+      error: readErr(pub as GraphErr, "Instagram Reel publish failed."),
     };
   }
   return { ok: true, mediaId };
