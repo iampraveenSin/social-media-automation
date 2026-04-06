@@ -25,7 +25,10 @@ function normalizeScheduledChannel(x: unknown): ScheduledChannel {
 export async function GET(request: Request) {
   const secret = process.env.CRON_SECRET?.trim();
   const auth = request.headers.get("authorization");
-  if (!secret || auth !== `Bearer ${secret}`) {
+  const qsSecret = new URL(request.url).searchParams.get("secret")?.trim();
+  const authorized =
+    !!secret && (auth === `Bearer ${secret}` || qsSecret === secret);
+  if (!authorized) {
     return new Response("Unauthorized", { status: 401 });
   }
 
