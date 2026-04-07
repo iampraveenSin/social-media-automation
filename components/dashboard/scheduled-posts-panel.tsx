@@ -1,3 +1,5 @@
+"use client";
+
 import { cancelScheduledPost } from "@/app/actions/schedule-post";
 
 export type ScheduledPostRow = {
