@@ -202,62 +202,64 @@ export function DriveBrowser({ connectedAs }: { connectedAs: string | null }) {
             No folders or media in this location.
           </p>
         ) : (
-          <ul className="divide-y divide-slate-100">
-            {sortedFiles.map((f) => (
-              <li key={f.id}>
-                {isFolderMime(f.mimeType) ? (
-                  <button
-                    type="button"
-                    onClick={() => openFolder(f.id, f.name)}
-                    className="flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm transition hover:bg-white"
-                  >
-                    <span className="text-lg text-amber-600" aria-hidden>
-                      📁
-                    </span>
-                    <span className="font-medium text-slate-900">{f.name}</span>
-                    <span className="ml-auto text-xs text-slate-400">Open</span>
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => toggleDriveFile(f)}
-                    className="flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm transition hover:bg-white"
-                  >
-                    {f.thumbnailLink ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={f.thumbnailLink}
-                        alt=""
-                        className="size-10 shrink-0 rounded-md object-cover"
-                        referrerPolicy="no-referrer"
-                      />
-                    ) : (
-                      <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-slate-200 text-[10px] font-semibold text-slate-600">
-                        {isGifMime(f.mimeType)
-                          ? "GIF"
-                          : isVideoMime(f.mimeType)
-                            ? "VID"
-                            : "IMG"}
+          <div className="max-h-[26rem] overflow-y-auto">
+            <ul className="divide-y divide-slate-100">
+              {sortedFiles.map((f) => (
+                <li key={f.id}>
+                  {isFolderMime(f.mimeType) ? (
+                    <button
+                      type="button"
+                      onClick={() => openFolder(f.id, f.name)}
+                      className="flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm transition hover:bg-white"
+                    >
+                      <span className="text-lg text-amber-600" aria-hidden>
+                        📁
                       </span>
-                    )}
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate font-medium text-slate-900">
-                        {f.name}
+                      <span className="font-medium text-slate-900">{f.name}</span>
+                      <span className="ml-auto text-xs text-slate-400">Open</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => toggleDriveFile(f)}
+                      className="flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm transition hover:bg-white"
+                    >
+                      {f.thumbnailLink ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={f.thumbnailLink}
+                          alt=""
+                          className="size-10 shrink-0 rounded-md object-cover"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-slate-200 text-[10px] font-semibold text-slate-600">
+                          {isGifMime(f.mimeType)
+                            ? "GIF"
+                            : isVideoMime(f.mimeType)
+                              ? "VID"
+                              : "IMG"}
+                        </span>
+                      )}
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-medium text-slate-900">
+                          {f.name}
+                        </span>
+                        <span className="text-xs text-slate-500">
+                          {mediaLabel(f.mimeType)}
+                        </span>
                       </span>
-                      <span className="text-xs text-slate-500">
-                        {mediaLabel(f.mimeType)}
-                      </span>
-                    </span>
-                    {driveSelectedIds.has(f.id) ? (
-                      <span className="text-xs font-semibold text-indigo-600">
-                        Selected
-                      </span>
-                    ) : null}
-                  </button>
-                )}
-              </li>
-            ))}
-          </ul>
+                      {driveSelectedIds.has(f.id) ? (
+                        <span className="text-xs font-semibold text-indigo-600">
+                          Selected
+                        </span>
+                      ) : null}
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
       </div>
 
