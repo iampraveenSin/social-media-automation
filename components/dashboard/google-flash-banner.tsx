@@ -12,12 +12,13 @@ const FLASH: Record<
   },
   error: {
     tone: "error",
-    message: "Could not connect Google Drive. Check client ID, secret, and redirect URI.",
+    message:
+      "Could not connect Google Drive. Try again, or contact support if this keeps happening.",
   },
   no_refresh: {
     tone: "error",
     message:
-      "Google did not return a refresh token. Open Google Account → Security → Third-party access, remove this app, then connect again (use “prompt: consent”).",
+      "Google didn’t grant ongoing access. Disconnect this app under Google Account → Security → Third-party access, then connect Drive again here.",
   },
   disconnected: {
     tone: "info",

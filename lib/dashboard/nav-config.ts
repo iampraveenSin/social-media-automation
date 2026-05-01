@@ -32,6 +32,6 @@ export const DASHBOARD_NAV: DashboardNavItem[] = [
     href: "/dashboard/auto",
     label: "Auto",
     description:
-      "Random Drive media on a schedule to your Facebook Page (cron + optional AI caption).",
+      "Hands-off posts from Google Drive on a repeating schedule, with optional AI captions.",
   },
 ];

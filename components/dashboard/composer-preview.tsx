@@ -7,6 +7,12 @@ import {
   isGifMime,
   isVideoMime,
 } from "@/lib/composer/media-types";
+import {
+  driveComposePreviewUrl,
+  driveMediaUrlForComposer,
+  driveRawFileUrl,
+} from "@/lib/composer/compose-preview-url";
+import { needsRasterPreviewConversion } from "@/lib/composer/needs-browser-preview";
 import { postMediaUploadErrorMessage } from "@/lib/composer/post-media-storage-error";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 import {
@@ -22,7 +28,18 @@ import {
 
 function mediaSrc(item: ComposerItem): string {
   if (item.kind === "upload") return item.previewUrl;
-  return `/api/google/drive/file?id=${encodeURIComponent(item.file.id)}`;
+  return driveMediaUrlForComposer(item.file);
+}
+
+function chipThumbSrc(it: ComposerItem): string | null {
+  if (it.kind === "upload") return it.previewUrl;
+  if (it.kind === "drive") {
+    if (needsRasterPreviewConversion(it.file.mimeType, it.file.name)) {
+      return driveComposePreviewUrl(it.file);
+    }
+    return it.file.thumbnailLink ?? driveRawFileUrl(it.file);
+  }
+  return null;
 }
 
 function cornerClass(c: LogoCorner): string {
@@ -181,7 +198,7 @@ export function ComposerPreview({
       setUploadBusy(true);
       try {
         for (const file of arr) {
-          const uploadId = addSingleUpload(file);
+          const uploadId = await addSingleUpload(file);
           if (!uploadId) continue;
           const result = await uploadFileToPostMedia(file);
           if ("error" in result) {
@@ -234,12 +251,7 @@ export function ComposerPreview({
             const key = composerItemKey(it);
             const name =
               it.kind === "drive" ? it.file.name : it.file.name;
-            const thumb =
-              it.kind === "drive" && it.file.thumbnailLink
-                ? it.file.thumbnailLink
-                : it.kind === "upload"
-                  ? it.previewUrl
-                  : null;
+            const thumb = chipThumbSrc(it);
             return (
               <div
                 key={key}

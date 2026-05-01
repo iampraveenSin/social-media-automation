@@ -1,4 +1,5 @@
 import { google } from "googleapis";
+import { isCameraRawFilename } from "@/lib/composer/camera-raw";
 import { createGoogleOAuth2Client } from "@/lib/google/oauth-factory";
 
 const FOLDER_MIME = "application/vnd.google-apps.folder";
@@ -10,10 +11,13 @@ export function sanitizeDriveFolderId(folderId: string | null | undefined): stri
   return "root";
 }
 
+const MEDIA_OR_FOLDER =
+  "mimeType contains 'image/' or mimeType contains 'video/'";
+
 export function buildDriveListQuery(folderId: string): string {
   const id = sanitizeDriveFolderId(folderId);
   const parent = id === "root" ? "root" : id;
-  return `'${parent}' in parents and trashed = false and (mimeType = '${FOLDER_MIME}' or mimeType contains 'image/' or mimeType contains 'video/')`;
+  return `'${parent}' in parents and trashed = false and (mimeType = '${FOLDER_MIME}' or ${MEDIA_OR_FOLDER})`;
 }
 
 export async function getDriveClientForRefreshToken(refreshToken: string) {
@@ -45,13 +49,15 @@ export async function listDriveChildren(
     orderBy: "folder,name",
   });
 
-  const files = (res.data.files ?? []).map((f) => ({
-    id: f.id!,
-    name: f.name ?? "Untitled",
-    mimeType: f.mimeType ?? "",
-    size: f.size,
-    thumbnailLink: f.thumbnailLink,
-  }));
+  const files = (res.data.files ?? [])
+    .map((f) => ({
+      id: f.id!,
+      name: f.name ?? "Untitled",
+      mimeType: f.mimeType ?? "",
+      size: f.size,
+      thumbnailLink: f.thumbnailLink,
+    }))
+    .filter((f) => !isCameraRawFilename(f.name));
 
   return {
     files,
@@ -69,15 +75,15 @@ export async function pickRandomDriveMedia(
   const parent = id === "root" ? "root" : id;
   const q =
     id === "root"
-      ? "trashed = false and (mimeType contains 'image/' or mimeType contains 'video/')"
-      : `'${parent}' in parents and trashed = false and (mimeType contains 'image/' or mimeType contains 'video/')`;
+      ? `trashed = false and (${MEDIA_OR_FOLDER})`
+      : `'${parent}' in parents and trashed = false and (${MEDIA_OR_FOLDER})`;
   const res = await drive.files.list({
     q,
     pageSize: 100,
     fields: "files(id, name, mimeType, thumbnailLink)",
   });
   const files = (res.data.files ?? []).filter(
-    (f) => f.id && f.mimeType && f.name,
+    (f) => f.id && f.name && !isCameraRawFilename(f.name ?? ""),
   ) as DriveFileRow[];
   if (files.length === 0) return null;
   const i = Math.floor(Math.random() * files.length);

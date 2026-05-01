@@ -1,4 +1,6 @@
 import sharp from "sharp";
+import { isCameraRawFilename } from "@/lib/composer/camera-raw";
+import { inferMimeFromFilename } from "@/lib/composer/infer-mime-from-filename";
 import type { ResolvedMedia } from "@/lib/composer/publish-media";
 import { isGifMime, isVideoMime } from "@/lib/composer/media-types";
 
@@ -17,15 +19,22 @@ function arrayBufferFromBuffer(buf: Buffer): ArrayBuffer {
   return u8.buffer;
 }
 
-function inferMimeFromFilename(filenameBase: string): string | null {
-  const ext = filenameBase.split(".").pop()?.toLowerCase();
-  if (ext === "heic") return "image/heic";
-  if (ext === "heif") return "image/heif";
-  return null;
-}
-
 function effectiveMimeType(mimeType: string, filenameBase?: string): string {
   const m = mimeType.trim().toLowerCase();
+  const inferred =
+    filenameBase && /\.(heic|heif)$/i.test(filenameBase)
+      ? inferMimeFromFilename(filenameBase)
+      : null;
+  /* Browsers often mislabel HEIC as image/jpeg — trust extension when it conflicts. */
+  if (
+    inferred &&
+    (m === "image/jpeg" ||
+      m === "image/jpg" ||
+      !m ||
+      m === "application/octet-stream")
+  ) {
+    return inferred;
+  }
   if (
     (!m || m === "application/octet-stream") &&
     filenameBase &&
@@ -57,10 +66,7 @@ async function heicBufferToJpegBuffer(buffer: ArrayBuffer): Promise<Buffer> {
   return Buffer.from(new Uint8Array(raw));
 }
 
-async function rasterToMetaJpeg(
-  nodeBuf: Buffer,
-  svg: boolean,
-): Promise<Buffer> {
+async function rasterToMetaJpeg(nodeBuf: Buffer, svg: boolean): Promise<Buffer> {
   return sharp(nodeBuf, {
     failOn: "none",
     ...(svg ? { density: 300 } : {}),
@@ -84,6 +90,12 @@ export async function normalizeStillBufferForMeta(
   mimeType: string,
   filenameBase?: string,
 ): Promise<{ buffer: ArrayBuffer; mimeType: string; converted: boolean }> {
+  if (filenameBase && isCameraRawFilename(filenameBase)) {
+    throw new Error(
+      "Camera RAW files are not supported. Export JPEG or PNG and upload that instead.",
+    );
+  }
+
   const m = effectiveMimeType(mimeType, filenameBase);
 
   if (m === "image/jpeg" || m === "image/jpg") {

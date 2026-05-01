@@ -1,3 +1,6 @@
+import { inferMimeFromFilename } from "@/lib/composer/infer-mime-from-filename";
+import { isCameraRawFilename } from "@/lib/composer/camera-raw";
+
 /** Drive row shape used by picker + composer (shared). */
 export type DrivePickerFile = {
   id: string;
@@ -40,8 +43,38 @@ export function isCollageImageMime(m: string) {
 export function composerItemMime(
   item: { kind: "drive"; file: DrivePickerFile } | { kind: "upload"; file: File },
 ): string {
-  if (item.kind === "drive") return item.file.mimeType;
-  return item.file.type || "application/octet-stream";
+  if (item.kind === "drive") {
+    const m = item.file.mimeType.trim();
+    const inferred = inferMimeFromFilename(item.file.name);
+    if ((!m || m === "application/octet-stream") && inferred) {
+      return inferred;
+    }
+    return item.file.mimeType;
+  }
+  const t = item.file.type.trim();
+  if (t) return t;
+  return inferMimeFromFilename(item.file.name) ?? "application/octet-stream";
+}
+
+/**
+ * Aligns with Google Drive `files.list` query in `drive-service.ts`:
+ * `mimeType contains 'image/' or mimeType contains 'video/'`.
+ */
+export function mimeMatchesDriveComposerQuery(mimeType: string): boolean {
+  const m = mimeType.trim().toLowerCase();
+  return m.includes("image/") || m.includes("video/");
+}
+
+/**
+ * Same eligibility as Drive picker rows (after RAW filename filter): any image/* or video/*,
+ * plus HEIC/HEIF when the browser omits `File.type` (matches `composerItemMime` inference).
+ */
+export function isComposerUploadMedia(file: File): boolean {
+  if (isCameraRawFilename(file.name)) return false;
+  const mime = file.type.trim();
+  if (mime && mimeMatchesDriveComposerQuery(mime)) return true;
+  const inferred = inferMimeFromFilename(file.name);
+  return Boolean(inferred && mimeMatchesDriveComposerQuery(inferred));
 }
 
 export function mediaKindLabel(mime: string) {

@@ -42,9 +42,8 @@ export async function MetaConnectSection() {
           Facebook &amp; Instagram
         </h2>
         <p className="mt-2 text-sm text-amber-900">
-          Facebook sign-in isn&apos;t configured for this site yet. If you manage
-          this deployment, add your Meta app credentials in your hosting
-          settings. Otherwise ask your administrator or try again later.
+          Facebook sign-in isn&apos;t available on this workspace yet. Ask your
+          administrator or try again later.
         </p>
       </section>
     );

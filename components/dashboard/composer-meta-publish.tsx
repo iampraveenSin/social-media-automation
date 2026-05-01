@@ -15,6 +15,7 @@ import {
   bakeCollageToPngBlob,
   shouldBakeCollage,
 } from "@/lib/composer/bake-collage-canvas";
+import { driveMediaUrlForComposer } from "@/lib/composer/compose-preview-url";
 import { postMediaUploadErrorMessage } from "@/lib/composer/post-media-storage-error";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 import {
@@ -66,7 +67,8 @@ function buildFullCaption(caption: string, hashtags: string): string {
 
 function itemMediaUrlForBake(item: ComposerItem): string {
   if (item.kind === "upload") return item.previewUrl;
-  return `${window.location.origin}/api/google/drive/file?id=${encodeURIComponent(item.file.id)}`;
+  const origin = window.location.origin;
+  return `${origin}${driveMediaUrlForComposer(item.file)}`;
 }
 
 async function uploadBakedCollagePng(blob: Blob): Promise<
