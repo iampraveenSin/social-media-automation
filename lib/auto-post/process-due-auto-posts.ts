@@ -132,10 +132,15 @@ export async function processDueAutoPosts(
       ReturnType<typeof publishToFacebookPageForUser>
     >;
     try {
-      publishResult = await publishToFacebookPageForUser(admin, row.user_id, {
-        caption,
-        items: [{ kind: "drive", fileId: file.id }],
-      });
+      publishResult = await publishToFacebookPageForUser(
+        admin,
+        row.user_id,
+        {
+          caption,
+          items: [{ kind: "drive", fileId: file.id }],
+        },
+        { publishSource: "auto" },
+      );
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Publish threw.";
       publishResult = { ok: false, error: msg };

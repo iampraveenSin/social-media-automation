@@ -1,11 +1,7 @@
-import {
-  isCollageImageMime,
-  isGifMime,
-  isImageMime,
-  isVideoMime,
-} from "@/lib/composer/media-types";
+import { isGifMime, isMetaRasterStillMime, isVideoMime } from "@/lib/composer/media-types";
 import type { PublishMetaItem } from "@/lib/composer/publish-media";
 import { resolvePublishMediaItems } from "@/lib/composer/publish-media";
+import { normalizeResolvedStillImagesForMeta } from "@/lib/media/normalize-still-for-meta";
 import {
   publishInstagramCarousel,
   publishInstagramReelVideo,
@@ -15,7 +11,10 @@ import {
   buildInstagramAccessibleMediaUrls,
   removeIgStagingPaths,
 } from "@/lib/publish/instagram-image-urls";
-import { insertPublishedPostRow } from "@/lib/publish/published-posts";
+import {
+  insertPublishedPostRow,
+  type PublishedPostSource,
+} from "@/lib/publish/published-posts";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type PublishInstagramResult =
@@ -31,7 +30,9 @@ export async function publishToInstagramForUser(
     caption: string;
     items: PublishMetaItem[];
   },
+  options?: { publishSource?: PublishedPostSource },
 ): Promise<PublishInstagramResult> {
+  const publishSource: PublishedPostSource = options?.publishSource ?? "manual";
   const caption = typeof payload.caption === "string" ? payload.caption : "";
   const items = Array.isArray(payload.items) ? payload.items : [];
 
@@ -85,7 +86,13 @@ export async function publishToInstagramForUser(
   if (!resolvedResult.ok) {
     return { ok: false, error: resolvedResult.error };
   }
-  const resolved = resolvedResult.resolved;
+  let resolved = resolvedResult.resolved;
+
+  const normalized = await normalizeResolvedStillImagesForMeta(resolved);
+  if (!normalized.ok) {
+    return { ok: false, error: normalized.error };
+  }
+  resolved = normalized.resolved;
 
   const hasVideo = resolved.some((r) => isVideoMime(r.mimeType));
   const hasGif = resolved.some((r) => isGifMime(r.mimeType));
@@ -99,13 +106,12 @@ export async function publishToInstagramForUser(
   if (
     !hasVideo &&
     !hasGif &&
-    !resolved.every(
-      (r) => isImageMime(r.mimeType) && isCollageImageMime(r.mimeType),
-    )
+    !resolved.every((r) => isMetaRasterStillMime(r.mimeType))
   ) {
     return {
       ok: false,
-      error: "Use one or more still images (JPEG/PNG/WebP) for Instagram.",
+      error:
+        "After processing, photos must be JPEG, PNG, or WebP. Try a smaller file or different format.",
     };
   }
 
@@ -160,6 +166,7 @@ export async function publishToInstagramForUser(
       pageId,
       pageName,
       instagramUsername: igUsername,
+      publishSource,
     });
 
     return {

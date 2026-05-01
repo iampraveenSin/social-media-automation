@@ -1,4 +1,10 @@
 import Link from "next/link";
+import {
+  getPublishedPostSourceBadgeClass,
+  getPublishedPostSourceLabel,
+  getPublishedPostSourceTitle,
+} from "@/lib/dashboard/published-post-source";
+import { formatDashboardDateTime } from "@/lib/datetime/format-dashboard-datetime";
 
 export type PublishedPostRow = {
   id: string;
@@ -6,6 +12,8 @@ export type PublishedPostRow = {
   caption: string | null;
   status: string;
   channel?: string | null;
+  /** manual | scheduled | auto — authoritative when set */
+  publish_source?: string | null;
   facebook_post_id: string | null;
   facebook_media_id: string | null;
   instagram_media_id?: string | null;
@@ -15,7 +23,11 @@ export type PublishedPostRow = {
     page_id?: string;
     page_name?: string | null;
     instagram_username?: string | null;
+    /** scheduled = Posts queue; auto = Auto tab; manual = Main Publish buttons (FB vs IG from channel) */
+    publish_source?: "manual" | "scheduled" | "auto";
   } | null;
+  /** Precomputed on the Posts page server for stable labels */
+  sourceDisplay?: string;
 };
 
 function mediaLabel(summary: PublishedPostRow["media_summary"]): string {
@@ -87,11 +99,12 @@ export function PublishedPostsTable({ rows }: { rows: PublishedPostRow[] }) {
 
   return (
     <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <table className="w-full min-w-[720px] text-left text-sm">
+      <table className="w-full min-w-[880px] text-left text-sm">
         <thead className="border-b border-slate-100 bg-slate-50/80 text-xs font-semibold uppercase tracking-wide text-slate-500">
           <tr>
             <th className="px-4 py-3">When</th>
             <th className="px-4 py-3">Channel</th>
+            <th className="px-4 py-3">Source</th>
             <th className="px-4 py-3">Type</th>
             <th className="px-4 py-3">Account</th>
             <th className="px-4 py-3">Caption</th>
@@ -102,14 +115,10 @@ export function PublishedPostsTable({ rows }: { rows: PublishedPostRow[] }) {
           {rows.map((row) => {
             const fb = facebookHref(row);
             const ig = instagramHref(row);
-            const when = new Date(row.created_at);
             return (
               <tr key={row.id} className="text-slate-800">
                 <td className="whitespace-nowrap px-4 py-3 text-slate-600">
-                  {when.toLocaleString(undefined, {
-                    dateStyle: "medium",
-                    timeStyle: "short",
-                  })}
+                  {formatDashboardDateTime(row.created_at)}
                 </td>
                 <td className="px-4 py-3">
                   <span
@@ -120,6 +129,14 @@ export function PublishedPostsTable({ rows }: { rows: PublishedPostRow[] }) {
                     }`}
                   >
                     {channelLabel(row)}
+                  </span>
+                </td>
+                <td className="max-w-[11rem] px-4 py-3">
+                  <span
+                    className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium leading-snug ${getPublishedPostSourceBadgeClass(row)}`}
+                    title={getPublishedPostSourceTitle(row)}
+                  >
+                    {row.sourceDisplay ?? getPublishedPostSourceLabel(row)}
                   </span>
                 </td>
                 <td className="px-4 py-3">

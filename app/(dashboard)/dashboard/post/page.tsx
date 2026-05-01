@@ -7,6 +7,7 @@ import {
   ScheduledPostsPanel,
   type ScheduledPostRow,
 } from "@/components/dashboard/scheduled-posts-panel";
+import { getPublishedPostSourceLabel } from "@/lib/dashboard/published-post-source";
 import { DASHBOARD_NAV } from "@/lib/dashboard/nav-config";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
@@ -15,6 +16,7 @@ export const metadata: Metadata = {
 };
 
 export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
 
 export default async function DashboardPostPage() {
   const blurb = DASHBOARD_NAV.find((n) => n.href.includes("/post"));
@@ -35,7 +37,7 @@ export default async function DashboardPostPage() {
         supabase
           .from("published_posts")
           .select(
-            "id, created_at, caption, status, channel, facebook_post_id, facebook_media_id, instagram_media_id, media_summary",
+            "id, created_at, caption, status, channel, publish_source, facebook_post_id, facebook_media_id, instagram_media_id, media_summary",
           )
           .eq("user_id", user.id)
           .eq("status", "published")
@@ -53,7 +55,13 @@ export default async function DashboardPostPage() {
       if (pubRes.error) {
         publishedError = pubRes.error.message;
       } else {
-        publishedRows = (pubRes.data ?? []) as PublishedPostRow[];
+        publishedRows = (pubRes.data ?? []).map((raw) => {
+          const row = raw as PublishedPostRow;
+          return {
+            ...row,
+            sourceDisplay: getPublishedPostSourceLabel(row),
+          };
+        });
       }
 
       if (schRes.error) {

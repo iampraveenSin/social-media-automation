@@ -6,12 +6,16 @@ import {
 } from "@/lib/composer/media-types";
 import type { PublishMetaItem } from "@/lib/composer/publish-media";
 import { resolvePublishMediaItems } from "@/lib/composer/publish-media";
+import { normalizeResolvedStillImagesForMeta } from "@/lib/media/normalize-still-for-meta";
 import {
   publishPageMultiPhotoFeed,
   publishPagePhoto,
   publishPageVideo,
 } from "@/lib/meta/page-publish";
-import { insertPublishedPostRow } from "@/lib/publish/published-posts";
+import {
+  insertPublishedPostRow,
+  type PublishedPostSource,
+} from "@/lib/publish/published-posts";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type PublishMetaResult =
@@ -28,7 +32,9 @@ export async function publishToFacebookPageForUser(
   supabase: SupabaseClient,
   userId: string,
   payload: { caption: string; items: PublishMetaItem[] },
+  options?: { publishSource?: PublishedPostSource },
 ): Promise<PublishMetaResult> {
+  const publishSource: PublishedPostSource = options?.publishSource ?? "manual";
   const caption = typeof payload.caption === "string" ? payload.caption : "";
   const items = Array.isArray(payload.items) ? payload.items : [];
 
@@ -75,7 +81,13 @@ export async function publishToFacebookPageForUser(
   if (!resolvedResult.ok) {
     return { ok: false, error: resolvedResult.error };
   }
-  const resolved = resolvedResult.resolved;
+  let resolved = resolvedResult.resolved;
+
+  const normalized = await normalizeResolvedStillImagesForMeta(resolved);
+  if (!normalized.ok) {
+    return { ok: false, error: normalized.error };
+  }
+  resolved = normalized.resolved;
 
   const hasVideo = resolved.some((r) => isVideoMime(r.mimeType));
   const hasGif = resolved.some((r) => isGifMime(r.mimeType));
@@ -116,6 +128,7 @@ export async function publishToFacebookPageForUser(
       mediaCount: 1,
       pageId,
       pageName,
+      publishSource,
     });
     return {
       ok: true,
@@ -153,6 +166,7 @@ export async function publishToFacebookPageForUser(
       mediaCount: 1,
       pageId,
       pageName,
+      publishSource,
     });
     return {
       ok: true,
@@ -200,6 +214,7 @@ export async function publishToFacebookPageForUser(
       mediaCount: 1,
       pageId,
       pageName,
+      publishSource,
     });
     return {
       ok: true,
@@ -231,6 +246,7 @@ export async function publishToFacebookPageForUser(
     mediaCount: resolved.length,
     pageId,
     pageName,
+    publishSource,
   });
   return {
     ok: true,
