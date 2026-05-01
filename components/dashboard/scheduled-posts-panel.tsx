@@ -20,14 +20,8 @@ export function ScheduledPostsPanel({
     <section className="space-y-3">
       <h2 className="text-lg font-semibold text-slate-900">Scheduled</h2>
       <p className="text-sm text-slate-600">
-        Posts go out shortly after the time you pick (usually within about a minute)
-        once a scheduler hits <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">/api/cron/process-scheduled</code>{" "}
-        with your workspace <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">CRON_SECRET</code>.
-        On Vercel Hobby, enable the GitHub Action in{" "}
-        <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">.github/workflows/process-scheduled-cron.yml</code>{" "}
-        (repo secrets <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">PRNIT_SITE_URL</code>,{" "}
-        <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">PRNIT_CRON_SECRET</code>) or use another
-        every-minute HTTP cron pointed at the same URL.
+        Posts go out shortly after the time you choose—usually within about a minute.
+        You can cancel a queued post here until it starts sending.
       </p>
       {rows.length === 0 ? (
         <p className="text-sm text-slate-500">No upcoming posts in the queue.</p>

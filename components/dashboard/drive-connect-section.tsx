@@ -36,9 +36,8 @@ export async function DriveConnectSection() {
       <section className="rounded-2xl border border-amber-200 bg-amber-50 p-6 shadow-sm">
         <h2 className="text-lg font-semibold text-amber-950">Google Drive</h2>
         <p className="mt-2 text-sm text-amber-900">
-          Google Drive isn&apos;t available on this site yet. If you manage this
-          deployment, finish Google OAuth setup in your hosting console. Otherwise
-          ask your administrator or try again later.
+          Google Drive isn&apos;t available on this workspace yet. Ask your
+          administrator or try again later.
         </p>
       </section>
     );

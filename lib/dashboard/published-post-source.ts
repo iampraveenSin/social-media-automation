@@ -39,7 +39,7 @@ export function getPublishedPostSourceLabel(row: PublishedSourceInput): string {
 export function getPublishedPostSourceTitle(row: PublishedSourceInput): string {
   const raw = resolveSource(row);
   if (raw === "scheduled") {
-    return "Saved under Posts → Scheduled; sent when the cron job runs at your chosen time.";
+    return "From your scheduled queue on the Posts tab—sent close to the time you picked.";
   }
   if (raw === "auto") {
     return "Posted by the Auto tab (hands-off posting from Drive).";

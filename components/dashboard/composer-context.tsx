@@ -12,11 +12,13 @@ import {
 import {
   composerItemMime,
   isCollageImageMime,
+  isComposerUploadMedia,
   isGifMime,
   isImageMime,
   isVideoMime,
   type DrivePickerFile,
 } from "@/lib/composer/media-types";
+import { createUploadComposerItem } from "@/lib/composer/upload-preview";
 
 export type ComposerItem =
   | { kind: "drive"; file: DrivePickerFile }
@@ -92,9 +94,9 @@ type ComposerContextValue = {
   items: ComposerItem[];
   toggleDriveFile: (file: DrivePickerFile) => void;
   replaceWithDriveFile: (file: DrivePickerFile) => void;
-  addUploadFiles: (list: FileList | File[]) => void;
+  addUploadFiles: (list: FileList | File[]) => Promise<void>;
   /** Returns upload id, or null if the file type was skipped. */
-  addSingleUpload: (file: File) => string | null;
+  addSingleUpload: (file: File) => Promise<string | null>;
   setUploadStoragePath: (uploadId: string, storagePath: string) => void;
   removeItem: (key: string) => void;
   clearAll: () => void;
@@ -144,43 +146,29 @@ export function ComposerProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const addUploadFiles = useCallback((list: FileList | File[]) => {
+  const addUploadFiles = useCallback(async (list: FileList | File[]) => {
     const arr = Array.from(list);
-    setItems((prev) => {
-      let next = prev;
-      for (const f of arr) {
-        const mime = f.type || "";
-        if (
-          !mime.startsWith("image/") &&
-          !mime.startsWith("video/")
-        ) {
-          continue;
-        }
-        const item: ComposerItem = {
-          kind: "upload",
-          id: crypto.randomUUID(),
-          file: f,
-          previewUrl: URL.createObjectURL(f),
-        };
-        next = applyComposerItem(next, item);
+    for (const f of arr) {
+      if (!isComposerUploadMedia(f)) {
+        continue;
       }
-      return reconcileUploadRevokes(prev, next);
-    });
+      try {
+        const item = await createUploadComposerItem(f, crypto.randomUUID());
+        setItems((prev) =>
+          reconcileUploadRevokes(prev, applyComposerItem(prev, item)),
+        );
+      } catch (e) {
+        console.error(e);
+      }
+    }
   }, []);
 
-  const addSingleUpload = useCallback((file: File): string | null => {
-    const mime = file.type || "";
-    if (!mime.startsWith("image/") && !mime.startsWith("video/")) {
+  const addSingleUpload = useCallback(async (file: File): Promise<string | null> => {
+    if (!isComposerUploadMedia(file)) {
       return null;
     }
     const id = crypto.randomUUID();
-    const previewUrl = URL.createObjectURL(file);
-    const item: ComposerItem = {
-      kind: "upload",
-      id,
-      file,
-      previewUrl,
-    };
+    const item = await createUploadComposerItem(file, id);
     setItems((prev) =>
       reconcileUploadRevokes(prev, applyComposerItem(prev, item)),
     );
