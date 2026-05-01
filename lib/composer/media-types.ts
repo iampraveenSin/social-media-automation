@@ -21,6 +21,17 @@ export function isVideoMime(m: string) {
   return m.startsWith("video/");
 }
 
+/** JPEG / PNG / WebP stills — safe for Instagram feed photos and Facebook Page photos here. */
+export function isMetaRasterStillMime(m: string) {
+  const x = m.toLowerCase();
+  return (
+    x === "image/jpeg" ||
+    x === "image/jpg" ||
+    x === "image/png" ||
+    x === "image/webp"
+  );
+}
+
 /** Raster images suitable for collage (excludes GIF). */
 export function isCollageImageMime(m: string) {
   return isImageMime(m) && !isGifMime(m);

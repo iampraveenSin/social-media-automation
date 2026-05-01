@@ -1,8 +1,8 @@
 /**
- * Vercel Cron (vercel.json) hits this route ~every minute.
- * Polls `scheduled_posts` for due rows, publishes to the user’s Facebook Page,
- * then runs auto-post (`processDueAutoPosts`). Requires Bearer CRON_SECRET +
- * SUPABASE_SERVICE_ROLE_KEY. Locally: `npm run cron:once` while `npm run dev` runs.
+ * External scheduler (e.g. GitHub Actions every minute) or Vercel Cron hits this route.
+ * Polls `scheduled_posts` for due rows, publishes to Facebook/Instagram per channel,
+ * then runs auto-post (`processDueAutoPosts`). Auth: Bearer CRON_SECRET or ?secret=
+ * matching CRON_SECRET. Needs SUPABASE_SERVICE_ROLE_KEY. Locally: `npm run cron:once`.
  */
 import { processDueAutoPosts } from "@/lib/auto-post/process-due-auto-posts";
 import { publishToFacebookPageForUser } from "@/lib/publish/facebook-publish-internal";
@@ -105,18 +105,28 @@ export async function GET(request: Request) {
     const facebookResult =
       channel === "instagram"
         ? null
-        : await publishToFacebookPageForUser(admin, row.user_id as string, {
-            caption: row.caption as string,
-            items: items as PublishMetaItem[],
-          });
+        : await publishToFacebookPageForUser(
+            admin,
+            row.user_id as string,
+            {
+              caption: row.caption as string,
+              items: items as PublishMetaItem[],
+            },
+            { publishSource: "scheduled" },
+          );
 
     const instagramResult =
       channel === "facebook"
         ? null
-        : await publishToInstagramForUser(admin, row.user_id as string, {
-            caption: row.caption as string,
-            items: items as PublishMetaItem[],
-          });
+        : await publishToInstagramForUser(
+            admin,
+            row.user_id as string,
+            {
+              caption: row.caption as string,
+              items: items as PublishMetaItem[],
+            },
+            { publishSource: "scheduled" },
+          );
 
     const facebookOk = facebookResult ? facebookResult.ok : true;
     const instagramOk = instagramResult ? instagramResult.ok : true;

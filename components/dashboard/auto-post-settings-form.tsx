@@ -26,8 +26,10 @@ function toDatetimeLocalValue(iso: string | null): string {
 
 export function AutoPostSettingsForm({
   initial,
+  driveConnected,
 }: {
   initial: AutoPostFormInitial;
+  driveConnected: boolean;
 }) {
   const [enabled, setEnabled] = useState(initial.enabled);
   const [cadence, setCadence] = useState(initial.cadence);
@@ -93,10 +95,28 @@ export function AutoPostSettingsForm({
       </h2>
       <p className="mt-2 text-sm text-slate-600">
         When a run is due, Prnit picks a <strong>random image or video</strong> from
-        your Google Drive (or from one folder if you set a folder ID), adds a
-        caption using AI when available or starter text otherwise, and publishes to
-        your selected Facebook Page.
+        the Google Drive account you connected on <strong>Main</strong> (whole Drive
+        by default). Optionally narrow to one folder below—only use that if you want
+        a subset, not a second connection.
       </p>
+
+      {driveConnected ? (
+        <p
+          className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-950"
+          role="status"
+        >
+          Drive is connected. Auto-post will use it automatically—no folder ID
+          required unless you want to limit picks to a single folder.
+        </p>
+      ) : (
+        <p
+          className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950"
+          role="status"
+        >
+          Connect Google Drive on the Main tab first; auto-post reads media from that
+          same account.
+        </p>
+      )}
 
       <label className="mt-6 flex cursor-pointer items-center gap-3">
         <input
@@ -155,23 +175,28 @@ export function AutoPostSettingsForm({
           </span>
         </label>
 
-        <label className="block">
-          <span className="mb-1 block text-xs font-medium text-slate-600">
-            Drive folder ID (optional)
-          </span>
-          <input
-            type="text"
-            value={driveFolderId}
-            onChange={(e) => setDriveFolderId(e.target.value)}
-            disabled={!enabled}
-            placeholder="Leave empty = random from whole Drive"
-            className="w-full max-w-md rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 disabled:opacity-50"
-          />
-          <span className="mt-1 block text-xs text-slate-500">
-            Paste a folder ID from the Drive URL; only images and videos in that
-            folder are considered.
-          </span>
-        </label>
+        <details className="rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2">
+          <summary className="cursor-pointer text-xs font-medium text-slate-700">
+            Optional: limit to one Drive folder
+          </summary>
+          <label className="mt-3 block">
+            <span className="mb-1 block text-xs font-medium text-slate-600">
+              Folder ID (advanced)
+            </span>
+            <input
+              type="text"
+              value={driveFolderId}
+              onChange={(e) => setDriveFolderId(e.target.value)}
+              disabled={!enabled}
+              placeholder="Empty = entire Drive (default)"
+              className="w-full max-w-md rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 disabled:opacity-50"
+            />
+            <span className="mt-1 block text-xs text-slate-500">
+              Only if you want random picks from one folder. Paste the ID from the
+              folder&apos;s Drive URL; leave blank for your whole library.
+            </span>
+          </label>
+        </details>
       </div>
 
       {lastError ? (

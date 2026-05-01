@@ -1,0 +1,34 @@
+# Minute-level scheduler for scheduled posts + auto-post (Vercel Hobby has daily cron only).
+#
+# Repo → Settings → Secrets and variables → Actions, add:
+#   PRNIT_SITE_URL   e.g. https://your-app.vercel.app  (no trailing slash)
+#   PRNIT_CRON_SECRET same value as Vercel CRON_SECRET
+#
+# GitHub may delay scheduled runs by a few minutes under load; for stricter SLAs use a paid cron (e.g. cron-job.org) every minute.
+
+name: Process scheduled & auto posts
+
+on:
+  schedule:
+    - cron: "* * * * *"
+  workflow_dispatch:
+
+jobs:
+  process-queue:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Call Prnit cron endpoint
+        env:
+          SITE_URL: ${{ secrets.PRNIT_SITE_URL }}
+          CRON_SECRET: ${{ secrets.PRNIT_CRON_SECRET }}
+        run: |
+          set -e
+          if [ -z "$SITE_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "::error::Add repository secrets PRNIT_SITE_URL and PRNIT_CRON_SECRET (see workflow file header)."
+            exit 1
+          fi
+          BASE="${SITE_URL%/}"
+          curl -fsS --max-time 120 \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${BASE}/api/cron/process-scheduled"

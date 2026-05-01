@@ -1,6 +1,7 @@
 "use client";
 
 import { cancelScheduledPost } from "@/app/actions/schedule-post";
+import { formatDashboardDateTime } from "@/lib/datetime/format-dashboard-datetime";
 
 export type ScheduledPostRow = {
   id: string;
@@ -19,10 +20,14 @@ export function ScheduledPostsPanel({
     <section className="space-y-3">
       <h2 className="text-lg font-semibold text-slate-900">Scheduled</h2>
       <p className="text-sm text-slate-600">
-        When the time you chose arrives, your post is sent soon after—usually
-        within about a minute—once the app&apos;s background job runs. If nothing
-        publishes, your workspace may need a moment to catch up; try again later
-        or contact support.
+        Posts go out shortly after the time you pick (usually within about a minute)
+        once a scheduler hits <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">/api/cron/process-scheduled</code>{" "}
+        with your workspace <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">CRON_SECRET</code>.
+        On Vercel Hobby, enable the GitHub Action in{" "}
+        <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">.github/workflows/process-scheduled-cron.yml</code>{" "}
+        (repo secrets <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">PRNIT_SITE_URL</code>,{" "}
+        <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">PRNIT_CRON_SECRET</code>) or use another
+        every-minute HTTP cron pointed at the same URL.
       </p>
       {rows.length === 0 ? (
         <p className="text-sm text-slate-500">No upcoming posts in the queue.</p>
@@ -30,7 +35,6 @@ export function ScheduledPostsPanel({
       {rows.length > 0 ? (
       <ul className="space-y-2">
         {rows.map((row) => {
-          const when = new Date(row.scheduled_at);
           const channelLabel =
             row.channel === "instagram"
               ? "Instagram"
@@ -44,10 +48,7 @@ export function ScheduledPostsPanel({
             >
               <div className="min-w-0 flex-1">
                 <p className="font-medium text-slate-900">
-                  {when.toLocaleString(undefined, {
-                    dateStyle: "medium",
-                    timeStyle: "short",
-                  })}
+                  {formatDashboardDateTime(row.scheduled_at)}
                   <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-normal text-slate-700">
                     {channelLabel}
                   </span>

@@ -22,6 +22,7 @@ import {
   type LogoCorner,
   useComposer,
 } from "./composer-context";
+import { formatDashboardDateTime } from "@/lib/datetime/format-dashboard-datetime";
 
 export type MetaAccountSummary = {
   pageName: string | null;
@@ -241,10 +242,7 @@ export function ComposerMetaPublish({
       });
       if (res.ok) {
         setSuccess(
-          `Scheduled for ${when.toLocaleString(undefined, {
-            dateStyle: "medium",
-            timeStyle: "short",
-          })}. Check the Posts tab for the queue.`,
+          `Scheduled for ${formatDashboardDateTime(when)}. Check the Posts tab for the queue.`,
         );
         setScheduleAt("");
       } else {

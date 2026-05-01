@@ -13,13 +13,20 @@ export async function AutoPostPanel() {
     );
   }
 
-  const { data, error } = await supabase
-    .from("auto_post_settings")
-    .select(
-      "enabled, cadence, use_ai_caption, next_run_at, drive_folder_id, last_error",
-    )
-    .eq("user_id", user.id)
-    .maybeSingle();
+  const [{ data, error }, driveCheck] = await Promise.all([
+    supabase
+      .from("auto_post_settings")
+      .select(
+        "enabled, cadence, use_ai_caption, next_run_at, drive_folder_id, last_error",
+      )
+      .eq("user_id", user.id)
+      .maybeSingle(),
+    supabase
+      .from("google_drive_accounts")
+      .select("user_id")
+      .eq("user_id", user.id)
+      .maybeSingle(),
+  ]);
 
   if (error) {
     const missing =
@@ -58,5 +65,10 @@ export async function AutoPostPanel() {
     lastError: row?.last_error ?? null,
   };
 
-  return <AutoPostSettingsForm initial={initial} />;
+  return (
+    <AutoPostSettingsForm
+      initial={initial}
+      driveConnected={Boolean(driveCheck.data)}
+    />
+  );
 }
