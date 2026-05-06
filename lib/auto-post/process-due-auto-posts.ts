@@ -1,11 +1,16 @@
 import { buildAutoPostCaption } from "@/lib/auto-post/build-auto-caption";
 import {
-  addCadenceToDate,
+  addCadenceInTimeZone,
   type AutoCadence,
   isAutoCadence,
 } from "@/lib/auto-post/cadence";
+import { normalizeAutoPostChannel } from "@/lib/auto-post/channel";
+import { normalizeAutoPostNextRunTimeMode } from "@/lib/auto-post/next-run-time-mode";
+import { pickNextSmartRunUtc } from "@/lib/auto-post/smart-run-time";
+import type { PublishMetaItem } from "@/lib/composer/publish-media";
 import { pickRandomDriveMedia } from "@/lib/google/drive-service";
 import { publishToFacebookPageForUser } from "@/lib/publish/facebook-publish-internal";
+import { publishToInstagramForUser } from "@/lib/publish/instagram-publish-internal";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 const BATCH = 5;
@@ -17,6 +22,9 @@ type AutoRow = {
   next_run_at: string;
   use_ai_caption: boolean;
   drive_folder_id: string | null;
+  channel?: string | null;
+  next_run_time_mode?: string | null;
+  schedule_timezone?: string | null;
 };
 
 export async function processDueAutoPosts(
@@ -29,7 +37,9 @@ export async function processDueAutoPosts(
   const nowIso = new Date().toISOString();
   const { data: due, error: fetchError } = await admin
     .from("auto_post_settings")
-    .select("user_id, cadence, next_run_at, use_ai_caption, drive_folder_id")
+    .select(
+      "user_id, cadence, next_run_at, use_ai_caption, drive_folder_id, channel, next_run_time_mode, schedule_timezone",
+    )
     .eq("enabled", true)
     .not("next_run_at", "is", null)
     .lte("next_run_at", nowIso)
@@ -94,10 +104,22 @@ export async function processDueAutoPosts(
       continue;
     }
 
-    const claimedNext = addCadenceToDate(
+    const tz = row.schedule_timezone?.trim() || "UTC";
+    const afterCadence = addCadenceInTimeZone(
       new Date(prevNext),
       cadence,
-    ).toISOString();
+      tz,
+    );
+    const ch = normalizeAutoPostChannel(row.channel);
+    const timeMode = normalizeAutoPostNextRunTimeMode(row.next_run_time_mode);
+    const claimedNext =
+      timeMode === "smart"
+        ? pickNextSmartRunUtc({
+            channel: ch,
+            earliest: afterCadence,
+            timeZone: tz,
+          }).toISOString()
+        : afterCadence.toISOString();
     const { data: claimed } = await admin
       .from("auto_post_settings")
       .update({
@@ -128,31 +150,60 @@ export async function processDueAutoPosts(
       caption = "Auto post\n\n#automated";
     }
 
-    let publishResult: Awaited<
+    const channel = normalizeAutoPostChannel(row.channel);
+    const items: PublishMetaItem[] = [{ kind: "drive", fileId: file.id }];
+    const payload = { caption, items };
+
+    let facebookResult: Awaited<
       ReturnType<typeof publishToFacebookPageForUser>
-    >;
-    try {
-      publishResult = await publishToFacebookPageForUser(
-        admin,
-        row.user_id,
-        {
-          caption,
-          items: [{ kind: "drive", fileId: file.id }],
-        },
-        { publishSource: "auto" },
-      );
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Publish threw.";
-      publishResult = { ok: false, error: msg };
+    > | null = null;
+    let instagramResult: Awaited<
+      ReturnType<typeof publishToInstagramForUser>
+    > | null = null;
+
+    if (channel !== "instagram") {
+      try {
+        facebookResult = await publishToFacebookPageForUser(
+          admin,
+          row.user_id,
+          payload,
+          { publishSource: "auto" },
+        );
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Publish threw.";
+        facebookResult = { ok: false, error: msg };
+      }
     }
 
-    if (publishResult.ok) {
+    if (channel !== "facebook") {
+      try {
+        instagramResult = await publishToInstagramForUser(
+          admin,
+          row.user_id,
+          payload,
+          { publishSource: "auto" },
+        );
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Publish threw.";
+        instagramResult = { ok: false, error: msg };
+      }
+    }
+
+    const facebookOk = facebookResult ? facebookResult.ok : true;
+    const instagramOk = instagramResult ? instagramResult.ok : true;
+    const allOk = facebookOk && instagramOk;
+
+    if (allOk) {
       results.push({ userId: row.user_id, status: "published" });
     } else {
+      const detail = [facebookResult, instagramResult]
+        .filter((x): x is { ok: false; error: string } => Boolean(x && !x.ok))
+        .map((x) => x.error)
+        .join(" | ");
       await admin
         .from("auto_post_settings")
         .update({
-          last_error: publishResult.error.slice(0, 2000),
+          last_error: detail.slice(0, 2000),
           next_run_at: new Date(Date.now() + RETRY_MS).toISOString(),
           updated_at: new Date().toISOString(),
         })
@@ -160,7 +211,7 @@ export async function processDueAutoPosts(
       results.push({
         userId: row.user_id,
         status: "failed",
-        detail: publishResult.error,
+        detail,
       });
     }
   }

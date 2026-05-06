@@ -25,9 +25,8 @@ export default function DashboardAutoPage() {
 
       <PlaceholderPanel title="More automation" showComingSoonNote={false}>
         <p>
-          Future ideas: fixed posting windows, multi-file carousels from a folder,
-          and cross-posting to Instagram from the same run. For now, auto posts go
-          to your Facebook Page only.
+          Future ideas: fixed posting windows and multi-file carousels from a folder.
+          You can already choose Facebook, Instagram, or both for each automatic run.
         </p>
       </PlaceholderPanel>
     </div>

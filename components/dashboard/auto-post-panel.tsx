@@ -1,4 +1,6 @@
 import { AutoPostSettingsForm } from "@/components/dashboard/auto-post-settings-form";
+import { normalizeAutoPostChannel } from "@/lib/auto-post/channel";
+import { normalizeAutoPostNextRunTimeMode } from "@/lib/auto-post/next-run-time-mode";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export async function AutoPostPanel() {
@@ -17,7 +19,7 @@ export async function AutoPostPanel() {
     supabase
       .from("auto_post_settings")
       .select(
-        "enabled, cadence, use_ai_caption, next_run_at, drive_folder_id, last_error",
+        "enabled, cadence, channel, use_ai_caption, next_run_at, next_run_time_mode, schedule_timezone, drive_folder_id, last_error",
       )
       .eq("user_id", user.id)
       .maybeSingle(),
@@ -50,8 +52,11 @@ export async function AutoPostPanel() {
   const row = data as {
     enabled: boolean;
     cadence: string;
+    channel: string | null;
     use_ai_caption: boolean;
     next_run_at: string | null;
+    next_run_time_mode: string | null;
+    schedule_timezone: string | null;
     drive_folder_id: string | null;
     last_error: string | null;
   } | null;
@@ -59,7 +64,10 @@ export async function AutoPostPanel() {
   const initial = {
     enabled: row?.enabled ?? false,
     cadence: row?.cadence ?? "daily",
+    channel: normalizeAutoPostChannel(row?.channel),
     useAiCaption: row?.use_ai_caption ?? true,
+    nextRunTimeMode: normalizeAutoPostNextRunTimeMode(row?.next_run_time_mode),
+    scheduleTimezone: row?.schedule_timezone ?? null,
     nextRunAtIso: row?.next_run_at ?? null,
     driveFolderId: row?.drive_folder_id ?? "",
     lastError: row?.last_error ?? null,
