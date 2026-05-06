@@ -1,16 +1,24 @@
 "use client";
 
 import type { FormEvent } from "react";
-import { useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import {
   saveAutoPostSettings,
   type SaveAutoPostPayload,
 } from "@/app/actions/auto-post-settings";
+import type { AutoPostChannel } from "@/lib/auto-post/channel";
+import type { AutoPostNextRunTimeMode } from "@/lib/auto-post/next-run-time-mode";
+import { pickNextSmartRunUtc } from "@/lib/auto-post/smart-run-time";
+
+const MIN_LEAD_MS = 60_000;
 
 export type AutoPostFormInitial = {
   enabled: boolean;
   cadence: string;
+  channel: AutoPostChannel;
   useAiCaption: boolean;
+  nextRunTimeMode: AutoPostNextRunTimeMode;
+  scheduleTimezone: string | null;
   nextRunAtIso: string | null;
   driveFolderId: string;
   lastError: string | null;
@@ -19,6 +27,11 @@ export type AutoPostFormInitial = {
 function toDatetimeLocalValue(iso: string | null): string {
   if (!iso) return "";
   const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return dateToDatetimeLocalValue(d);
+}
+
+function dateToDatetimeLocalValue(d: Date): string {
   if (Number.isNaN(d.getTime())) return "";
   const p = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
@@ -33,6 +46,10 @@ export function AutoPostSettingsForm({
 }) {
   const [enabled, setEnabled] = useState(initial.enabled);
   const [cadence, setCadence] = useState(initial.cadence);
+  const [channel, setChannel] = useState<AutoPostChannel>(initial.channel);
+  const [timeMode, setTimeMode] = useState<AutoPostNextRunTimeMode>(
+    initial.nextRunTimeMode,
+  );
   const [useAiCaption, setUseAiCaption] = useState(initial.useAiCaption);
   const [nextRunLocal, setNextRunLocal] = useState(() =>
     toDatetimeLocalValue(initial.nextRunAtIso),
@@ -43,6 +60,36 @@ export function AutoPostSettingsForm({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
+  const prevTimeMode = useRef(timeMode);
+  const prevChannel = useRef(channel);
+
+  const bumpSmartTime = useCallback(() => {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const d = pickNextSmartRunUtc({
+      channel,
+      earliest: new Date(Date.now() + MIN_LEAD_MS),
+      timeZone: tz,
+    });
+    setNextRunLocal(toDatetimeLocalValue(d.toISOString()));
+  }, [channel]);
+
+  useEffect(() => {
+    if (!enabled || timeMode !== "smart") {
+      prevTimeMode.current = timeMode;
+      prevChannel.current = channel;
+      return;
+    }
+    const switchedToSmart =
+      prevTimeMode.current !== "smart" && timeMode === "smart";
+    const channelChanged =
+      prevChannel.current !== channel && timeMode === "smart";
+    if (switchedToSmart || channelChanged) {
+      bumpSmartTime();
+    }
+    prevTimeMode.current = timeMode;
+    prevChannel.current = channel;
+  }, [enabled, timeMode, channel, bumpSmartTime]);
+
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
     setMessage(null);
@@ -50,24 +97,41 @@ export function AutoPostSettingsForm({
 
     let nextRunAtIso: string | null = null;
     if (enabled) {
-      if (!nextRunLocal) {
+      if (nextRunLocal) {
+        const parsed = new Date(nextRunLocal);
+        if (Number.isNaN(parsed.getTime())) {
+          setError("Invalid date or time.");
+          return;
+        }
+        nextRunAtIso = parsed.toISOString();
+        if (Date.parse(nextRunAtIso) < Date.now() + MIN_LEAD_MS) {
+          if (timeMode === "manual") {
+            setError(
+              "Pick a time at least 1 minute from now. Past dates and times aren’t allowed.",
+            );
+            return;
+          }
+          nextRunAtIso = null;
+        }
+      } else if (timeMode === "manual") {
         setError("Pick a date and time for the next automatic post.");
         return;
       }
-      const parsed = new Date(nextRunLocal);
-      if (Number.isNaN(parsed.getTime())) {
-        setError("Invalid date or time.");
-        return;
-      }
-      nextRunAtIso = parsed.toISOString();
     }
+
+    const scheduleTimezone = enabled
+      ? Intl.DateTimeFormat().resolvedOptions().timeZone
+      : null;
 
     const payload: SaveAutoPostPayload = {
       enabled,
       cadence,
+      channel,
       useAiCaption,
       nextRunAtIso,
       driveFolderId,
+      nextRunTimeMode: timeMode,
+      scheduleTimezone,
     };
 
     startTransition(async () => {
@@ -133,6 +197,26 @@ export function AutoPostSettingsForm({
       <div className="mt-6 space-y-4">
         <label className="block">
           <span className="mb-1 block text-xs font-medium text-slate-600">
+            Post to
+          </span>
+          <select
+            value={channel}
+            onChange={(e) => setChannel(e.target.value as AutoPostChannel)}
+            disabled={!enabled}
+            className="w-full max-w-xs rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 disabled:opacity-50"
+          >
+            <option value="facebook">Facebook Page</option>
+            <option value="instagram">Instagram</option>
+            <option value="both">Instagram + Facebook</option>
+          </select>
+          <span className="mt-1 block text-xs text-slate-500">
+            Instagram options need your Page linked to an Instagram account (Main
+            tab).
+          </span>
+        </label>
+
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium text-slate-600">
             Cadence (from each successful run)
           </span>
           <select
@@ -146,20 +230,65 @@ export function AutoPostSettingsForm({
             <option value="weekly">Weekly</option>
             <option value="monthly">Monthly</option>
           </select>
+          <span className="mt-1 block text-xs text-slate-500">
+            Gaps use your device timezone: daily = next calendar day at the same clock
+            time; every 3 days = +3 calendar days at the same time.
+          </span>
         </label>
 
-        <label className="block">
-          <span className="mb-1 block text-xs font-medium text-slate-600">
-            Next run (your device timezone)
-          </span>
-          <input
-            type="datetime-local"
-            value={nextRunLocal}
-            onChange={(e) => setNextRunLocal(e.target.value)}
-            disabled={!enabled}
-            className="w-full max-w-xs rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 disabled:opacity-50"
-          />
-        </label>
+        <fieldset className="space-y-2" disabled={!enabled}>
+          <legend className="mb-1 block text-xs font-medium text-slate-600">
+            Next run time
+          </legend>
+          <p className="text-xs text-slate-500">
+            Times use your device timezone. Recommended mode picks slots that match
+            common Facebook / Instagram engagement windows (you can still edit the
+            time below).
+          </p>
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:gap-4">
+            <label className="flex cursor-pointer items-center gap-2">
+              <input
+                type="radio"
+                name="auto-time-mode"
+                checked={timeMode === "manual"}
+                onChange={() => setTimeMode("manual")}
+                className="size-4 border-slate-300 text-indigo-600 focus:ring-indigo-500"
+              />
+              <span className="text-sm text-slate-800">I’ll pick the time</span>
+            </label>
+            <label className="flex cursor-pointer items-center gap-2">
+              <input
+                type="radio"
+                name="auto-time-mode"
+                checked={timeMode === "smart"}
+                onChange={() => setTimeMode("smart")}
+                className="size-4 border-slate-300 text-indigo-600 focus:ring-indigo-500"
+              />
+              <span className="text-sm text-slate-800">
+                Recommended windows (editable)
+              </span>
+            </label>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <input
+              type="datetime-local"
+              value={nextRunLocal}
+              min={dateToDatetimeLocalValue(new Date(Date.now() + MIN_LEAD_MS))}
+              onChange={(e) => setNextRunLocal(e.target.value)}
+              disabled={!enabled}
+              className="w-full max-w-xs rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 disabled:opacity-50"
+            />
+            {enabled && timeMode === "smart" ? (
+              <button
+                type="button"
+                onClick={() => bumpSmartTime()}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+              >
+                Pick another suggested time
+              </button>
+            ) : null}
+          </div>
+        </fieldset>
 
         <label className="flex cursor-pointer items-center gap-3">
           <input
