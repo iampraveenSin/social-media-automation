@@ -211,7 +211,8 @@ export function AutoPostSettingsForm({
           </select>
           <span className="mt-1 block text-xs text-slate-500">
             Instagram options need your Page linked to an Instagram account (Main
-            tab).
+            tab). For &quot;Instagram + Facebook&quot;, each run uses the same
+            Drive file and caption; Instagram is published first, then Facebook.
           </span>
         </label>
 

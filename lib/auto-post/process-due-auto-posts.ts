@@ -4,6 +4,7 @@ import {
   type AutoCadence,
   isAutoCadence,
 } from "@/lib/auto-post/cadence";
+import type { AutoPostChannel } from "@/lib/auto-post/channel";
 import { normalizeAutoPostChannel } from "@/lib/auto-post/channel";
 import { normalizeAutoPostNextRunTimeMode } from "@/lib/auto-post/next-run-time-mode";
 import { pickNextSmartRunUtc } from "@/lib/auto-post/smart-run-time";
@@ -15,6 +16,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 const BATCH = 5;
 const RETRY_MS = 60 * 60 * 1000;
+/** Hold `next_run_at` while we fetch Drive + publish so overlapping crons cannot double-post. */
+const LEASE_MS = 25 * 60 * 1000;
+const PUBLISH_ATTEMPTS = 3;
+const PUBLISH_RETRY_DELAY_MS = 2500;
 
 type AutoRow = {
   user_id: string;
@@ -26,6 +31,86 @@ type AutoRow = {
   next_run_time_mode?: string | null;
   schedule_timezone?: string | null;
 };
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function publishAutoToChannels(
+  admin: SupabaseClient,
+  userId: string,
+  channel: AutoPostChannel,
+  payload: { caption: string; items: PublishMetaItem[] },
+): Promise<{
+  facebookResult: Awaited<
+    ReturnType<typeof publishToFacebookPageForUser>
+  > | null;
+  instagramResult: Awaited<
+    ReturnType<typeof publishToInstagramForUser>
+  > | null;
+}> {
+  const opts = { publishSource: "auto" as const };
+  let facebookResult: Awaited<
+    ReturnType<typeof publishToFacebookPageForUser>
+  > | null = null;
+  let instagramResult: Awaited<
+    ReturnType<typeof publishToInstagramForUser>
+  > | null = null;
+
+  const runFb = async () => {
+    try {
+      return await publishToFacebookPageForUser(admin, userId, payload, opts);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Publish threw.";
+      return { ok: false as const, error: msg };
+    }
+  };
+  const runIg = async () => {
+    try {
+      return await publishToInstagramForUser(admin, userId, payload, opts);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Publish threw.";
+      return { ok: false as const, error: msg };
+    }
+  };
+
+  if (channel === "facebook") {
+    for (let i = 0; i < PUBLISH_ATTEMPTS; i++) {
+      facebookResult = await runFb();
+      if (facebookResult.ok) break;
+      if (i < PUBLISH_ATTEMPTS - 1) await sleep(PUBLISH_RETRY_DELAY_MS);
+    }
+    return { facebookResult, instagramResult };
+  }
+
+  if (channel === "instagram") {
+    for (let i = 0; i < PUBLISH_ATTEMPTS; i++) {
+      instagramResult = await runIg();
+      if (instagramResult.ok) break;
+      if (i < PUBLISH_ATTEMPTS - 1) await sleep(PUBLISH_RETRY_DELAY_MS);
+    }
+    return { facebookResult, instagramResult };
+  }
+
+  // both: Instagram first (stricter API) so we avoid a Facebook-only post if IG fails.
+  for (let i = 0; i < PUBLISH_ATTEMPTS; i++) {
+    instagramResult = await runIg();
+    if (instagramResult.ok) break;
+    if (i < PUBLISH_ATTEMPTS - 1) await sleep(PUBLISH_RETRY_DELAY_MS);
+  }
+
+  if (!instagramResult?.ok) {
+    return { facebookResult: null, instagramResult };
+  }
+
+  for (let i = 0; i < PUBLISH_ATTEMPTS; i++) {
+    facebookResult = await runFb();
+    if (facebookResult.ok) break;
+    if (i < PUBLISH_ATTEMPTS - 1) await sleep(PUBLISH_RETRY_DELAY_MS);
+  }
+
+  return { facebookResult, instagramResult };
+}
 
 export async function processDueAutoPosts(
   admin: SupabaseClient,
@@ -82,6 +167,42 @@ export async function processDueAutoPosts(
       continue;
     }
 
+    const tz = row.schedule_timezone?.trim() || "UTC";
+    const afterCadence = addCadenceInTimeZone(
+      new Date(prevNext),
+      cadence,
+      tz,
+    );
+    const ch = normalizeAutoPostChannel(row.channel);
+    const timeMode = normalizeAutoPostNextRunTimeMode(row.next_run_time_mode);
+    const claimedNext =
+      timeMode === "smart"
+        ? pickNextSmartRunUtc({
+            channel: ch,
+            earliest: afterCadence,
+            timeZone: tz,
+          }).toISOString()
+        : afterCadence.toISOString();
+
+    const leaseUntil = new Date(Date.now() + LEASE_MS).toISOString();
+
+    const { data: leased } = await admin
+      .from("auto_post_settings")
+      .update({
+        next_run_at: leaseUntil,
+        last_error: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("user_id", row.user_id)
+      .eq("enabled", true)
+      .eq("next_run_at", prevNext)
+      .select("user_id")
+      .maybeSingle();
+
+    if (!leased) {
+      continue;
+    }
+
     const file = await pickRandomDriveMedia(
       refresh,
       row.drive_folder_id?.trim() || null,
@@ -104,39 +225,6 @@ export async function processDueAutoPosts(
       continue;
     }
 
-    const tz = row.schedule_timezone?.trim() || "UTC";
-    const afterCadence = addCadenceInTimeZone(
-      new Date(prevNext),
-      cadence,
-      tz,
-    );
-    const ch = normalizeAutoPostChannel(row.channel);
-    const timeMode = normalizeAutoPostNextRunTimeMode(row.next_run_time_mode);
-    const claimedNext =
-      timeMode === "smart"
-        ? pickNextSmartRunUtc({
-            channel: ch,
-            earliest: afterCadence,
-            timeZone: tz,
-          }).toISOString()
-        : afterCadence.toISOString();
-    const { data: claimed } = await admin
-      .from("auto_post_settings")
-      .update({
-        next_run_at: claimedNext,
-        last_error: null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("user_id", row.user_id)
-      .eq("enabled", true)
-      .eq("next_run_at", prevNext)
-      .select("user_id")
-      .maybeSingle();
-
-    if (!claimed) {
-      continue;
-    }
-
     let caption: string;
     try {
       caption = await buildAutoPostCaption(
@@ -154,46 +242,26 @@ export async function processDueAutoPosts(
     const items: PublishMetaItem[] = [{ kind: "drive", fileId: file.id }];
     const payload = { caption, items };
 
-    let facebookResult: Awaited<
-      ReturnType<typeof publishToFacebookPageForUser>
-    > | null = null;
-    let instagramResult: Awaited<
-      ReturnType<typeof publishToInstagramForUser>
-    > | null = null;
-
-    if (channel !== "instagram") {
-      try {
-        facebookResult = await publishToFacebookPageForUser(
-          admin,
-          row.user_id,
-          payload,
-          { publishSource: "auto" },
-        );
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : "Publish threw.";
-        facebookResult = { ok: false, error: msg };
-      }
-    }
-
-    if (channel !== "facebook") {
-      try {
-        instagramResult = await publishToInstagramForUser(
-          admin,
-          row.user_id,
-          payload,
-          { publishSource: "auto" },
-        );
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : "Publish threw.";
-        instagramResult = { ok: false, error: msg };
-      }
-    }
+    const { facebookResult, instagramResult } = await publishAutoToChannels(
+      admin,
+      row.user_id,
+      channel,
+      payload,
+    );
 
     const facebookOk = facebookResult ? facebookResult.ok : true;
     const instagramOk = instagramResult ? instagramResult.ok : true;
     const allOk = facebookOk && instagramOk;
 
     if (allOk) {
+      await admin
+        .from("auto_post_settings")
+        .update({
+          next_run_at: claimedNext,
+          last_error: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("user_id", row.user_id);
       results.push({ userId: row.user_id, status: "published" });
     } else {
       const detail = [facebookResult, instagramResult]
