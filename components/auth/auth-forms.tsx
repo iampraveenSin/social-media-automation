@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { formatAuthCallbackError, formatSupabaseAuthUserMessage } from "@/lib/auth/auth-errors";
+import { formatAuthCallbackError, formatAuthUserMessage } from "@/lib/auth/auth-errors";
 import { authHref, sanitizeRedirectPath } from "@/lib/auth/safe-next";
 import { isSupabasePublicConfigured } from "@/lib/env/supabase-public";
 import { tryCreateBrowserSupabaseClient } from "@/lib/supabase/client";
@@ -16,7 +16,7 @@ function isMode(v: string | null): v is Mode {
 
 const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const AUTH_COOLDOWN_KEY = "prnit_supabase_auth_cooldown_until";
+const AUTH_COOLDOWN_KEY = "prnit_auth_submit_cooldown_until";
 const AUTH_COOLDOWN_MS = 20 * 60 * 1000;
 
 function readAuthCooldownUntil(): number {
@@ -43,7 +43,7 @@ function authCooldownBlockMessage(): string | null {
     return null;
   }
   const mins = Math.max(1, Math.ceil((until - Date.now()) / 60_000));
-  return `Please wait ~${mins} minute${mins === 1 ? "" : "s"} before trying again (local cooldown after a rate limit).`;
+  return `Please wait about ${mins} minute${mins === 1 ? "" : "s"}, then try again.`;
 }
 
 function isAuthRateLimitError(error: {
@@ -144,7 +144,7 @@ export function AuthForms({
     setPending(false);
     if (error) {
       if (isAuthRateLimitError(error)) armAuthCooldown();
-      setFormError(formatSupabaseAuthUserMessage(error, "login"));
+      setFormError(formatAuthUserMessage(error, "login"));
       return;
     }
     router.push(afterLoginPath);
@@ -199,7 +199,7 @@ export function AuthForms({
     setPending(false);
     if (error) {
       if (isAuthRateLimitError(error)) armAuthCooldown();
-      setFormError(formatSupabaseAuthUserMessage(error, "signup"));
+      setFormError(formatAuthUserMessage(error, "signup"));
       return;
     }
     if (data.session) {
@@ -242,7 +242,7 @@ export function AuthForms({
     setPending(false);
     if (error) {
       if (isAuthRateLimitError(error)) armAuthCooldown();
-      setFormError(formatSupabaseAuthUserMessage(error, "forgot"));
+      setFormError(formatAuthUserMessage(error, "forgot"));
       return;
     }
     setInfo(

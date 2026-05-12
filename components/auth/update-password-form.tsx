@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { formatAuthUserMessage } from "@/lib/auth/auth-errors";
 import { tryCreateBrowserSupabaseClient } from "@/lib/supabase/client";
 
 export function UpdatePasswordForm() {
@@ -37,7 +38,7 @@ export function UpdatePasswordForm() {
     const { error } = await supabase.auth.updateUser({ password });
     setPending(false);
     if (error) {
-      setFormError(error.message);
+      setFormError(formatAuthUserMessage(error, "login"));
       return;
     }
     router.push("/dashboard/main");
