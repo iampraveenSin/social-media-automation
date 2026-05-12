@@ -6,8 +6,10 @@ const KNOWN: Record<string, string> = {
 
 export type AuthFormFlow = "login" | "signup" | "forgot";
 
-/** Maps GoTrue / Supabase Auth errors to clearer copy (rate limits, etc.). */
-export function formatSupabaseAuthUserMessage(
+/**
+ * Maps auth provider errors to short, user-safe copy (no vendor names, infra details, or raw API text).
+ */
+export function formatAuthUserMessage(
   error: {
     message: string;
     status?: number;
@@ -25,49 +27,49 @@ export function formatSupabaseAuthUserMessage(
     lower.includes("email rate limit");
 
   if (isRateLimited) {
-    const base =
-      "Supabase returned HTTP 429 (rate limit). This is enforced on Supabase’s servers — the app cannot bypass it. ";
-    const wait =
-      "Wait at least 30–60 minutes (sometimes up to a few hours on busy IPs), then try once. ";
-    const owner =
-      "Project owner: Supabase Dashboard → your project → Authentication → open Rate limits / Attack protection / Email settings (labels vary by Supabase version) and raise limits if your plan allows. ";
-    const ip =
-      "Same Wi‑Fi / office / VPN IP counts for everyone — retries add up quickly.";
-
     if (flow === "signup") {
-      return (
-        base +
-        "Sign-up sends a confirmation email, which counts toward email rate limits. " +
-        wait +
-        owner +
-        ip
-      );
+      return "Too many sign-up attempts right now. Please wait a while, then try again.";
     }
     if (flow === "forgot") {
-      return (
-        base +
-        "Password reset emails count toward the same limits. " +
-        wait +
-        owner +
-        ip
-      );
+      return "Too many reset attempts right now. Please wait a while, then try again.";
     }
-    return base + wait + owner + ip;
+    return "Too many sign-in attempts right now. Please wait a while, then try again.";
   }
 
   if (status === 400 && lower.includes("invalid login credentials")) {
-    return "Wrong email or password. If you just signed up, confirm your email from the inbox first, then log in.";
+    return "Wrong email or password. If you just created an account, confirm your email from the message we sent, then try logging in.";
   }
 
-  return raw;
+  if (
+    lower.includes("already registered") ||
+    lower.includes("user already registered") ||
+    lower.includes("email address is already registered")
+  ) {
+    return "This email may already be in use. Try logging in, or use a different email.";
+  }
+
+  if (
+    lower.includes("email not confirmed") ||
+    (lower.includes("not confirmed") && lower.includes("email"))
+  ) {
+    return "Please confirm your email from the link we sent, then try logging in.";
+  }
+
+  if (lower.includes("password") && lower.includes("least")) {
+    return "Your password does not meet the requirements. Please adjust it and try again.";
+  }
+
+  return "Something went wrong. Please try again later.";
 }
 
 export function formatAuthCallbackError(raw: string): string {
   const key = raw.trim();
   if (KNOWN[key]) return KNOWN[key];
   try {
-    return decodeURIComponent(key.replace(/\+/g, " "));
+    const decoded = decodeURIComponent(key.replace(/\+/g, " "));
+    if (KNOWN[decoded]) return KNOWN[decoded];
   } catch {
-    return key;
+    /* ignore */
   }
+  return "That link could not be used. Please try signing in again.";
 }

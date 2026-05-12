@@ -3,6 +3,7 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 /**
  * Facebook Page summary for Main dashboard (profile image + Page id).
+ * Renders only when a Page is selected and has a token.
  */
 export async function FacebookInfoSection() {
   const supabase = await createServerSupabaseClient();
@@ -13,9 +14,7 @@ export async function FacebookInfoSection() {
 
   const { data: raw, error } = await supabase
     .from("meta_accounts")
-    .select(
-      "selected_page_id, selected_page_name, page_access_token, user_access_token",
-    )
+    .select("selected_page_id, selected_page_name, page_access_token")
     .eq("user_id", user.id)
     .maybeSingle();
 
@@ -25,13 +24,13 @@ export async function FacebookInfoSection() {
     selected_page_id: string | null;
     selected_page_name: string | null;
     page_access_token: string | null;
-    user_access_token: string | null;
   } | null;
 
   const pageId = row?.selected_page_id?.trim() ?? null;
   const pageToken = row?.page_access_token?.trim() ?? null;
+  if (!pageId || !pageToken) return null;
+
   const pageNameDb = row?.selected_page_name?.trim() ?? null;
-  const fbConnected = Boolean(row?.user_access_token);
 
   let profileUrl: string | null = null;
   let pageName = pageNameDb;
@@ -39,22 +38,17 @@ export async function FacebookInfoSection() {
   let fanCount: number | null = null;
   let pageLink: string | null = null;
 
-  if (pageId && pageToken) {
-    const details = await fetchPagePublicDetails(pageId, pageToken);
-    if (details) {
-      pageName = details.name ?? pageName;
-      profileUrl = details.picture_url ?? null;
-      category = details.category ?? null;
-      fanCount =
-        typeof details.fan_count === "number" ? details.fan_count : null;
-      pageLink = details.link ?? null;
-    }
+  const details = await fetchPagePublicDetails(pageId, pageToken);
+  if (details) {
+    pageName = details.name ?? pageName;
+    profileUrl = details.picture_url ?? null;
+    category = details.category ?? null;
+    fanCount = typeof details.fan_count === "number" ? details.fan_count : null;
+    pageLink = details.link ?? null;
   }
 
-  const linked = Boolean(pageId && pageToken);
   const avatarInitial =
-    pageName?.trim()?.charAt(0)?.toUpperCase() ??
-    (linked ? "?" : undefined);
+    pageName?.trim()?.charAt(0)?.toUpperCase() ?? "?";
 
   return (
     <section
@@ -125,10 +119,8 @@ export async function FacebookInfoSection() {
                   ) : (
                     pageName
                   )
-                ) : linked ? (
-                  "—"
                 ) : (
-                  "Not selected"
+                  "—"
                 )}
               </dd>
             </div>
@@ -155,7 +147,7 @@ export async function FacebookInfoSection() {
                 Page ID
               </dt>
               <dd className="break-all font-mono text-xs text-slate-800">
-                {pageId ?? "—"}
+                {pageId}
               </dd>
             </div>
             <div>
@@ -173,20 +165,6 @@ export async function FacebookInfoSection() {
             </div>
           </dl>
         </div>
-
-        {!linked ? (
-          <p className="rounded-xl border border-amber-200 bg-amber-50/90 px-3 py-2 text-sm text-amber-950">
-            {!fbConnected ? (
-              <>Connect Facebook above, then choose which Page to use for posts.</>
-            ) : (
-              <>
-                Pick a Page in the{" "}
-                <span className="font-medium">Facebook &amp; Instagram</span>{" "}
-                section above. Your Page photo and details will show here.
-              </>
-            )}
-          </p>
-        ) : null}
       </div>
     </section>
   );

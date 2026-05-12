@@ -94,6 +94,8 @@ type ComposerContextValue = {
   items: ComposerItem[];
   toggleDriveFile: (file: DrivePickerFile) => void;
   replaceWithDriveFile: (file: DrivePickerFile) => void;
+  /** Replaces the queue with several Drive files (e.g. random collage pick). */
+  replaceWithDriveFiles: (files: DrivePickerFile[]) => void;
   addUploadFiles: (list: FileList | File[]) => Promise<void>;
   /** Returns upload id, or null if the file type was skipped. */
   addSingleUpload: (file: File) => Promise<string | null>;
@@ -142,6 +144,26 @@ export function ComposerProvider({ children }: { children: ReactNode }) {
   const replaceWithDriveFile = useCallback((file: DrivePickerFile) => {
     setItems((prev) => {
       const next = [{ kind: "drive" as const, file }];
+      return reconcileUploadRevokes(prev, next);
+    });
+  }, []);
+
+  const replaceWithDriveFiles = useCallback((files: DrivePickerFile[]) => {
+    setItems((prev) => {
+      if (files.length === 0) {
+        return reconcileUploadRevokes(prev, []);
+      }
+      const mime0 = files[0]
+        ? composerItemMime({ kind: "drive", file: files[0] })
+        : "";
+      if (isVideoMime(mime0) || isGifMime(mime0)) {
+        const next = [{ kind: "drive" as const, file: files[0]! }];
+        return reconcileUploadRevokes(prev, next);
+      }
+      const stills = files.filter((f) =>
+        isCollageImageMime(composerItemMime({ kind: "drive", file: f })),
+      );
+      const next = stills.slice(0, 10).map((f) => ({ kind: "drive" as const, file: f }));
       return reconcileUploadRevokes(prev, next);
     });
   }, []);
@@ -221,6 +243,7 @@ export function ComposerProvider({ children }: { children: ReactNode }) {
       items,
       toggleDriveFile,
       replaceWithDriveFile,
+      replaceWithDriveFiles,
       addUploadFiles,
       addSingleUpload,
       setUploadStoragePath,
@@ -237,6 +260,7 @@ export function ComposerProvider({ children }: { children: ReactNode }) {
       items,
       toggleDriveFile,
       replaceWithDriveFile,
+      replaceWithDriveFiles,
       addUploadFiles,
       addSingleUpload,
       setUploadStoragePath,

@@ -21,10 +21,16 @@ export async function buildAutoPostCaption(
   supabase: SupabaseClient,
   userId: string,
   driveRefresh: string,
-  fileId: string,
+  fileIds: string[],
   useAi: boolean,
 ): Promise<string> {
-  const items: PublishMetaItem[] = [{ kind: "drive", fileId }];
+  if (fileIds.length === 0) {
+    return fullCaption(FALLBACK_SOCIAL_CAPTION, FALLBACK_SOCIAL_HASHTAGS);
+  }
+  const items: PublishMetaItem[] = fileIds.map((fileId) => ({
+    kind: "drive" as const,
+    fileId,
+  }));
   const resolvedResult = await resolvePublishMediaItems(
     supabase,
     userId,
