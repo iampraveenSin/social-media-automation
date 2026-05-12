@@ -103,6 +103,8 @@ export type MetaPagePublicDetails = {
   about?: string;
   phone?: string;
   website?: string;
+  /** Large profile image URL when `picture` was requested. */
+  picture_url?: string;
 };
 
 export async function fetchPagePublicDetails(
@@ -118,6 +120,7 @@ export async function fetchPagePublicDetails(
     "about",
     "phone",
     "website",
+    "picture{url}",
   ].join(",");
   const params = new URLSearchParams({
     fields,
@@ -135,11 +138,27 @@ export async function fetchPagePublicDetails(
     about?: string;
     phone?: string;
     website?: string;
+    picture?: { data?: { url?: string }; url?: string };
     error?: { message: string };
   };
   if (!res.ok || data.error || !data.name) {
     return null;
   }
+  const pictureUrl =
+    data.picture &&
+    typeof data.picture === "object" &&
+    "data" in data.picture &&
+    data.picture.data &&
+    typeof data.picture.data === "object" &&
+    "url" in data.picture.data &&
+    typeof (data.picture.data as { url?: string }).url === "string"
+      ? (data.picture.data as { url: string }).url
+      : data.picture &&
+          typeof data.picture === "object" &&
+          "url" in data.picture &&
+          typeof (data.picture as { url?: string }).url === "string"
+        ? (data.picture as { url: string }).url
+        : undefined;
   return {
     id: data.id ?? pageId,
     name: data.name,
@@ -149,6 +168,7 @@ export async function fetchPagePublicDetails(
     about: data.about,
     phone: data.phone,
     website: data.website,
+    picture_url: pictureUrl,
   };
 }
 
