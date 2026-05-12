@@ -3,7 +3,9 @@ import Link from "next/link";
 import { ComposerPreview } from "@/components/dashboard/composer-preview";
 import { ComposerShell } from "@/components/dashboard/composer-shell";
 import { DriveConnectSection } from "@/components/dashboard/drive-connect-section";
+import { FacebookInfoSection } from "@/components/dashboard/facebook-info-section";
 import { GoogleFlashBanner } from "@/components/dashboard/google-flash-banner";
+import { InstagramInfoSection } from "@/components/dashboard/instagram-info-section";
 import { MetaConnectSection } from "@/components/dashboard/meta-connect-section";
 import { MetaFlashBanner } from "@/components/dashboard/meta-flash-banner";
 import { PlaceholderPanel } from "@/components/dashboard/placeholder-panel";
@@ -62,7 +64,7 @@ export default async function DashboardMainPage({ searchParams }: Props) {
 
   return (
     <ComposerShell>
-      <div className="mx-auto max-w-4xl space-y-6">
+      <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">
             Main workspace
@@ -72,6 +74,9 @@ export default async function DashboardMainPage({ searchParams }: Props) {
 
         <MetaFlashBanner code={facebook} />
         <MetaConnectSection />
+
+        <FacebookInfoSection />
+        <InstagramInfoSection />
 
         <GoogleFlashBanner code={google} />
         <DriveConnectSection />
