@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { formatAuthCallbackError } from "@/lib/auth/auth-errors";
+import { formatAuthCallbackError, formatSupabaseAuthUserMessage } from "@/lib/auth/auth-errors";
 import { authHref, sanitizeRedirectPath } from "@/lib/auth/safe-next";
 import { isSupabasePublicConfigured } from "@/lib/env/supabase-public";
 import { tryCreateBrowserSupabaseClient } from "@/lib/supabase/client";
@@ -15,6 +15,49 @@ function isMode(v: string | null): v is Mode {
 }
 
 const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const AUTH_COOLDOWN_KEY = "prnit_supabase_auth_cooldown_until";
+const AUTH_COOLDOWN_MS = 20 * 60 * 1000;
+
+function readAuthCooldownUntil(): number {
+  if (typeof window === "undefined") return 0;
+  const raw = sessionStorage.getItem(AUTH_COOLDOWN_KEY);
+  const n = raw ? parseInt(raw, 10) : 0;
+  return Number.isFinite(n) ? n : 0;
+}
+
+function armAuthCooldown(): void {
+  if (typeof window === "undefined") return;
+  sessionStorage.setItem(
+    AUTH_COOLDOWN_KEY,
+    String(Date.now() + AUTH_COOLDOWN_MS),
+  );
+}
+
+function authCooldownBlockMessage(): string | null {
+  const until = readAuthCooldownUntil();
+  if (until <= Date.now()) {
+    if (until > 0 && typeof window !== "undefined") {
+      sessionStorage.removeItem(AUTH_COOLDOWN_KEY);
+    }
+    return null;
+  }
+  const mins = Math.max(1, Math.ceil((until - Date.now()) / 60_000));
+  return `Please wait ~${mins} minute${mins === 1 ? "" : "s"} before trying again (local cooldown after a rate limit).`;
+}
+
+function isAuthRateLimitError(error: {
+  message?: string;
+  status?: number;
+}): boolean {
+  const m = (error.message ?? "").toLowerCase();
+  return (
+    error.status === 429 ||
+    m.includes("rate limit") ||
+    m.includes("too many requests") ||
+    m.includes("email rate limit")
+  );
+}
 
 export function AuthForms({
   initialMode,
@@ -88,6 +131,11 @@ export function AuthForms({
       setFormError("Password must be at least 6 characters.");
       return;
     }
+    const cool = authCooldownBlockMessage();
+    if (cool) {
+      setFormError(cool);
+      return;
+    }
     setPending(true);
     const { error } = await supabase.auth.signInWithPassword({
       email,
@@ -95,7 +143,8 @@ export function AuthForms({
     });
     setPending(false);
     if (error) {
-      setFormError(error.message);
+      if (isAuthRateLimitError(error)) armAuthCooldown();
+      setFormError(formatSupabaseAuthUserMessage(error, "login"));
       return;
     }
     router.push(afterLoginPath);
@@ -128,6 +177,11 @@ export function AuthForms({
       setFormError("Passwords do not match.");
       return;
     }
+    const cool = authCooldownBlockMessage();
+    if (cool) {
+      setFormError(cool);
+      return;
+    }
     const origin = window.location.origin;
     const emailRedirectTo = `${origin}/auth/callback?next=${encodeURIComponent(afterLoginPath)}`;
 
@@ -144,7 +198,8 @@ export function AuthForms({
     });
     setPending(false);
     if (error) {
-      setFormError(error.message);
+      if (isAuthRateLimitError(error)) armAuthCooldown();
+      setFormError(formatSupabaseAuthUserMessage(error, "signup"));
       return;
     }
     if (data.session) {
@@ -172,6 +227,11 @@ export function AuthForms({
       setFormError("Enter a valid email address.");
       return;
     }
+    const cool = authCooldownBlockMessage();
+    if (cool) {
+      setFormError(cool);
+      return;
+    }
     const origin = window.location.origin;
     const redirectTo = `${origin}/auth/callback?next=${encodeURIComponent("/auth/update-password")}`;
 
@@ -181,7 +241,8 @@ export function AuthForms({
     });
     setPending(false);
     if (error) {
-      setFormError(error.message);
+      if (isAuthRateLimitError(error)) armAuthCooldown();
+      setFormError(formatSupabaseAuthUserMessage(error, "forgot"));
       return;
     }
     setInfo(
