@@ -8,8 +8,21 @@ import type { AutoPostChannel } from "@/lib/auto-post/channel";
 import { normalizeAutoPostChannel } from "@/lib/auto-post/channel";
 import { normalizeAutoPostNextRunTimeMode } from "@/lib/auto-post/next-run-time-mode";
 import { pickNextSmartRunUtc } from "@/lib/auto-post/smart-run-time";
+import { bakeCollageSharpFromResolved } from "@/lib/composer/bake-collage-sharp";
+import { isCollageImageMime } from "@/lib/composer/media-types";
 import type { PublishMetaItem } from "@/lib/composer/publish-media";
-import { pickRandomDriveMedia } from "@/lib/google/drive-service";
+import { resolvePublishMediaItems } from "@/lib/composer/publish-media";
+import {
+  loadDriveAccountForPick,
+  saveDrivePickCountAfterPick,
+} from "@/lib/google/drive-pick-account";
+import {
+  effectiveDriveRowMime,
+  nextDrivePickRotation,
+  pickRandomDrivePublishFiles,
+} from "@/lib/google/drive-service";
+import { normalizeResolvedStillImagesForMeta } from "@/lib/media/normalize-still-for-meta";
+import { fetchPublishedDriveFileIdsSet } from "@/lib/publish/fetch-published-drive-file-ids";
 import { publishToFacebookPageForUser } from "@/lib/publish/facebook-publish-internal";
 import { publishToInstagramForUser } from "@/lib/publish/instagram-publish-internal";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -40,7 +53,11 @@ async function publishAutoToChannels(
   admin: SupabaseClient,
   userId: string,
   channel: AutoPostChannel,
-  payload: { caption: string; items: PublishMetaItem[] },
+  payload: {
+    caption: string;
+    items: PublishMetaItem[];
+    publishedDriveFileIds?: string[] | null;
+  },
 ): Promise<{
   facebookResult: Awaited<
     ReturnType<typeof publishToFacebookPageForUser>
@@ -144,12 +161,8 @@ export async function processDueAutoPosts(
       : "daily";
     const prevNext = row.next_run_at;
 
-    const { data: driveRow } = await admin
-      .from("google_drive_accounts")
-      .select("refresh_token")
-      .eq("user_id", row.user_id)
-      .maybeSingle();
-    const refresh = driveRow?.refresh_token as string | undefined;
+    const { refreshToken: refresh, pickCount: prevPickCount } =
+      await loadDriveAccountForPick(admin, row.user_id);
     if (!refresh) {
       await admin
         .from("auto_post_settings")
@@ -203,11 +216,14 @@ export async function processDueAutoPosts(
       continue;
     }
 
-    const file = await pickRandomDriveMedia(
+    const excludeIds = await fetchPublishedDriveFileIdsSet(admin, row.user_id);
+    const { nextCount, forceSingle } = nextDrivePickRotation(prevPickCount);
+    const picked = await pickRandomDrivePublishFiles(
       refresh,
       row.drive_folder_id?.trim() || null,
+      { excludeIds, forceSingle },
     );
-    if (!file?.id) {
+    if (picked.length === 0) {
       await admin
         .from("auto_post_settings")
         .update({
@@ -225,22 +241,79 @@ export async function processDueAutoPosts(
       continue;
     }
 
+    await saveDrivePickCountAfterPick(admin, row.user_id, nextCount);
+
+    const sourceDriveIds = picked.map((f) => f.id);
+
     let caption: string;
     try {
       caption = await buildAutoPostCaption(
         admin,
         row.user_id,
         refresh,
-        file.id,
+        sourceDriveIds,
         row.use_ai_caption,
       );
     } catch {
       caption = "Auto post\n\n#automated";
     }
 
+    const isMultiCollage =
+      picked.length >= 2 &&
+      picked.every((f) =>
+        isCollageImageMime(effectiveDriveRowMime(f)),
+      );
+
+    let payload: {
+      caption: string;
+      items: PublishMetaItem[];
+      publishedDriveFileIds?: string[] | null;
+    } = {
+      caption,
+      items: picked.map((f) => ({ kind: "drive" as const, fileId: f.id })),
+    };
+
+    if (isMultiCollage) {
+      const driveItems: PublishMetaItem[] = picked.map((f) => ({
+        kind: "drive" as const,
+        fileId: f.id,
+      }));
+      const resolvedResult = await resolvePublishMediaItems(
+        admin,
+        row.user_id,
+        refresh,
+        driveItems,
+      );
+      if (resolvedResult.ok) {
+        const norm = await normalizeResolvedStillImagesForMeta(
+          resolvedResult.resolved,
+        );
+        if (norm.ok) {
+          const png = await bakeCollageSharpFromResolved(
+            norm.resolved,
+            picked.length,
+          );
+          if (png) {
+            const path = `${row.user_id}/${crypto.randomUUID()}-auto-collage.png`;
+            const { error: upErr } = await admin.storage
+              .from("post_media")
+              .upload(path, png, {
+                contentType: "image/png",
+                upsert: false,
+              });
+            if (!upErr) {
+              payload = {
+                caption,
+                items: [{ kind: "upload", storagePath: path }],
+                publishedDriveFileIds: sourceDriveIds,
+              };
+            }
+          }
+        }
+      }
+    }
+
     const channel = normalizeAutoPostChannel(row.channel);
-    const items: PublishMetaItem[] = [{ kind: "drive", fileId: file.id }];
-    const payload = { caption, items };
 
     const { facebookResult, instagramResult } = await publishAutoToChannels(
       admin,

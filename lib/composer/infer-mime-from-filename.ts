@@ -15,6 +15,29 @@ export function inferMimeFromFilename(filename: string): string | null {
       return "image/heic";
     case "heif":
       return "image/heif";
+    case "mp4":
+    case "m4v":
+      return "video/mp4";
+    case "mov":
+      return "video/quicktime";
+    case "webm":
+      return "video/webm";
+    case "mkv":
+      return "video/x-matroska";
+    case "avi":
+      return "video/x-msvideo";
+    case "mpeg":
+    case "mpg":
+      return "video/mpeg";
+    case "jpg":
+    case "jpeg":
+      return "image/jpeg";
+    case "png":
+      return "image/png";
+    case "webp":
+      return "image/webp";
+    case "gif":
+      return "image/gif";
     default:
       return null;
   }

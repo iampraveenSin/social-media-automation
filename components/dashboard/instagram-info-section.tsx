@@ -1,9 +1,9 @@
-import Link from "next/link";
 import { fetchInstagramUserPublicDetails } from "@/lib/meta/graph";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 /**
  * Instagram Business summary for Main dashboard (profile image + ids).
+ * Renders only when a Page is selected, Page token exists, and Instagram is linked.
  */
 export async function InstagramInfoSection() {
   const supabase = await createServerSupabaseClient();
@@ -31,19 +31,17 @@ export async function InstagramInfoSection() {
 
   const igId = row?.instagram_account_id?.trim() ?? null;
   const pageToken = row?.page_access_token?.trim() ?? null;
+  const pageSelected = Boolean(row?.selected_page_id?.trim());
+  if (!igId || !pageSelected || !pageToken) return null;
+
   const username = row?.instagram_username?.replace(/^@/, "") ?? null;
-  const pageSelected = Boolean(row?.selected_page_id);
 
   let profileUrl: string | null = null;
-  if (igId && pageToken) {
-    const details = await fetchInstagramUserPublicDetails(igId, pageToken);
-    profileUrl = details?.profile_picture_url ?? null;
-  }
+  const details = await fetchInstagramUserPublicDetails(igId, pageToken);
+  profileUrl = details?.profile_picture_url ?? null;
 
-  const linked = Boolean(igId && pageSelected);
   const avatarInitial =
-    username?.trim()?.charAt(0)?.toUpperCase() ??
-    (linked ? "?" : undefined);
+    username?.trim()?.charAt(0)?.toUpperCase() ?? "?";
 
   return (
     <section
@@ -90,7 +88,7 @@ export async function InstagramInfoSection() {
                 className="relative flex size-20 items-center justify-center rounded-full border-4 border-white bg-gradient-to-br from-pink-200 to-violet-200 text-lg font-bold text-pink-900 shadow-md"
                 aria-hidden
               >
-                {avatarInitial ?? "—"}
+                {avatarInitial}
               </div>
             )}
           </div>
@@ -101,7 +99,7 @@ export async function InstagramInfoSection() {
                 Username
               </dt>
               <dd className="font-medium text-slate-900">
-                {username ? `@${username}` : linked ? "—" : "Not linked"}
+                {username ? `@${username}` : "—"}
               </dd>
             </div>
             <div>
@@ -109,7 +107,7 @@ export async function InstagramInfoSection() {
                 Account ID
               </dt>
               <dd className="break-all font-mono text-xs text-slate-800">
-                {igId ?? "—"}
+                {igId}
               </dd>
             </div>
             <div>
@@ -127,31 +125,6 @@ export async function InstagramInfoSection() {
             </div>
           </dl>
         </div>
-
-        {!linked ? (
-          <p className="rounded-xl border border-amber-200 bg-amber-50/90 px-3 py-2 text-sm text-amber-950">
-            {!pageSelected ? (
-              <>
-                Select a Facebook Page first. Then link an Instagram Business account
-                to that Page in Meta Business Suite if you haven&apos;t already.
-              </>
-            ) : (
-              <>
-                This Page doesn&apos;t have a linked Instagram account yet. In{" "}
-                <span className="font-medium">Meta Business Suite</span>, connect an
-                Instagram Business profile to your Page, then use{" "}
-                <span className="font-medium">Reconnect</span> on{" "}
-                <Link
-                  href="/dashboard/main"
-                  className="font-medium text-indigo-600 underline"
-                >
-                  Main
-                </Link>{" "}
-                and pick the Page again.
-              </>
-            )}
-          </p>
-        ) : null}
       </div>
     </section>
   );

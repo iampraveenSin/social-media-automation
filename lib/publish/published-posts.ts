@@ -29,10 +29,14 @@ export async function insertPublishedPostRow(
     errorDetail?: string | null;
     /** Composer button vs queue vs auto-post tab */
     publishSource?: PublishedPostSource;
+    /** Google Drive file ids used in this publish (Drive items only). */
+    driveFileIds?: string[] | null;
   },
 ): Promise<void> {
   const caption = args.caption.slice(0, 8000);
   const publishSource: PublishedPostSource = args.publishSource ?? "manual";
+  const driveIds =
+    args.driveFileIds?.filter((x) => typeof x === "string" && x.length > 0) ?? [];
   const { error } = await supabase.from("published_posts").insert({
     user_id: userId,
     channel: args.channel,
@@ -49,6 +53,7 @@ export async function insertPublishedPostRow(
       page_name: args.pageName,
       instagram_username: args.instagramUsername ?? null,
       publish_source: publishSource,
+      ...(driveIds.length > 0 ? { drive_file_ids: driveIds } : {}),
     },
     error_detail: args.errorDetail ?? null,
   });

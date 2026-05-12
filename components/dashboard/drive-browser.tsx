@@ -24,7 +24,7 @@ function mediaLabel(m: string) {
 }
 
 export function DriveBrowser({ connectedAs }: { connectedAs: string | null }) {
-  const { toggleDriveFile, replaceWithDriveFile, selectionSummary, items } =
+  const { toggleDriveFile, replaceWithDriveFiles, selectionSummary, items } =
     useComposer();
 
   const [crumbs, setCrumbs] = useState<Crumb[]>([
@@ -36,6 +36,7 @@ export function DriveBrowser({ connectedAs }: { connectedAs: string | null }) {
   const [nextPageToken, setNextPageToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [randomPicking, setRandomPicking] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchPage = useCallback(
@@ -104,20 +105,31 @@ export function DriveBrowser({ connectedAs }: { connectedAs: string | null }) {
 
   const randomPick = async () => {
     setError(null);
+    setRandomPicking(true);
     try {
-      const r = await fetch("/api/google/drive/random");
+      const u = new URL("/api/google/drive/random", window.location.origin);
+      u.searchParams.set("folderId", folderId);
+      const r = await fetch(u, { cache: "no-store" });
       const j = (await r.json()) as {
+        files?: DriveFile[];
         file?: DriveFile | null;
         error?: string;
       };
       if (!r.ok) throw new Error(j.error || "Random pick failed");
-      if (!j.file) {
-        setError("No image or video files found in the first search batch.");
+      const list = j.files?.length ? j.files : j.file ? [j.file] : [];
+      if (list.length === 0) {
+        setError(
+          folderId === "root"
+            ? "No image or video files found in Drive."
+            : "No image or video files found in this folder.",
+        );
         return;
       }
-      replaceWithDriveFile(j.file);
+      replaceWithDriveFiles(list);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Random pick failed");
+    } finally {
+      setRandomPicking(false);
     }
   };
 
@@ -151,9 +163,20 @@ export function DriveBrowser({ connectedAs }: { connectedAs: string | null }) {
           <button
             type="button"
             onClick={randomPick}
-            className="rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-900 transition hover:bg-indigo-100"
+            disabled={randomPicking}
+            className="inline-flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-900 transition hover:bg-indigo-100 disabled:pointer-events-none disabled:opacity-60"
           >
-            Random pick
+            {randomPicking ? (
+              <>
+                <span
+                  className="size-4 shrink-0 rounded-full border-2 border-indigo-300 border-t-indigo-800 animate-spin"
+                  aria-hidden
+                />
+                <span>Picking…</span>
+              </>
+            ) : (
+              "Random pick"
+            )}
           </button>
           <form action={disconnectGoogleDrive}>
             <button

@@ -1,6 +1,9 @@
 import { isGifMime, isMetaRasterStillMime, isVideoMime } from "@/lib/composer/media-types";
 import type { PublishMetaItem } from "@/lib/composer/publish-media";
-import { resolvePublishMediaItems } from "@/lib/composer/publish-media";
+import {
+  driveFileIdsFromPublishItems,
+  resolvePublishMediaItems,
+} from "@/lib/composer/publish-media";
 import { normalizeResolvedStillImagesForMeta } from "@/lib/media/normalize-still-for-meta";
 import {
   publishInstagramCarousel,
@@ -29,6 +32,7 @@ export async function publishToInstagramForUser(
   payload: {
     caption: string;
     items: PublishMetaItem[];
+    publishedDriveFileIds?: string[] | null;
   },
   options?: { publishSource?: PublishedPostSource },
 ): Promise<PublishInstagramResult> {
@@ -45,6 +49,14 @@ export async function publishToInstagramForUser(
       error: `Instagram supports up to ${MAX_IMAGES} images per carousel.`,
     };
   }
+
+  const mergedDriveIds =
+    Array.isArray(payload.publishedDriveFileIds) &&
+    payload.publishedDriveFileIds.length > 0
+      ? payload.publishedDriveFileIds.filter(
+          (x): x is string => typeof x === "string" && x.length > 0,
+        )
+      : driveFileIdsFromPublishItems(items);
 
   const { data: metaRow } = await supabase
     .from("meta_accounts")
@@ -167,6 +179,7 @@ export async function publishToInstagramForUser(
       pageName,
       instagramUsername: igUsername,
       publishSource,
+      driveFileIds: mergedDriveIds,
     });
 
     return {

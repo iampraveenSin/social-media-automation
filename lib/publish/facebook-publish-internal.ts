@@ -5,7 +5,10 @@ import {
   isVideoMime,
 } from "@/lib/composer/media-types";
 import type { PublishMetaItem } from "@/lib/composer/publish-media";
-import { resolvePublishMediaItems } from "@/lib/composer/publish-media";
+import {
+  driveFileIdsFromPublishItems,
+  resolvePublishMediaItems,
+} from "@/lib/composer/publish-media";
 import { normalizeResolvedStillImagesForMeta } from "@/lib/media/normalize-still-for-meta";
 import {
   publishPageMultiPhotoFeed,
@@ -31,7 +34,12 @@ const MAX_IMAGES = 10;
 export async function publishToFacebookPageForUser(
   supabase: SupabaseClient,
   userId: string,
-  payload: { caption: string; items: PublishMetaItem[] },
+  payload: {
+    caption: string;
+    items: PublishMetaItem[];
+    /** When `items` are uploads (e.g. baked collage), pass source Drive ids for history / de-dupe. */
+    publishedDriveFileIds?: string[] | null;
+  },
   options?: { publishSource?: PublishedPostSource },
 ): Promise<PublishMetaResult> {
   const publishSource: PublishedPostSource = options?.publishSource ?? "manual";
@@ -47,6 +55,14 @@ export async function publishToFacebookPageForUser(
       error: `At most ${MAX_IMAGES} images per post. Fewer for video.`,
     };
   }
+
+  const mergedDriveIds =
+    Array.isArray(payload.publishedDriveFileIds) &&
+    payload.publishedDriveFileIds.length > 0
+      ? payload.publishedDriveFileIds.filter(
+          (x): x is string => typeof x === "string" && x.length > 0,
+        )
+      : driveFileIdsFromPublishItems(items);
 
   const { data: metaRow } = await supabase
     .from("meta_accounts")
@@ -129,6 +145,7 @@ export async function publishToFacebookPageForUser(
       pageId,
       pageName,
       publishSource,
+      driveFileIds: mergedDriveIds,
     });
     return {
       ok: true,
@@ -167,6 +184,7 @@ export async function publishToFacebookPageForUser(
       pageId,
       pageName,
       publishSource,
+      driveFileIds: mergedDriveIds,
     });
     return {
       ok: true,
@@ -215,6 +233,7 @@ export async function publishToFacebookPageForUser(
       pageId,
       pageName,
       publishSource,
+      driveFileIds: mergedDriveIds,
     });
     return {
       ok: true,
@@ -247,6 +266,7 @@ export async function publishToFacebookPageForUser(
     pageId,
     pageName,
     publishSource,
+    driveFileIds: mergedDriveIds,
   });
   return {
     ok: true,

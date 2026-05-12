@@ -11,6 +11,18 @@ export type PublishMetaItem =
   | { kind: "drive"; fileId: string }
   | { kind: "upload"; storagePath: string };
 
+/** Drive file ids from composer items (for de-duplicating random picks after publish). */
+export function driveFileIdsFromPublishItems(items: PublishMetaItem[]): string[] {
+  const ids: string[] = [];
+  for (const item of items) {
+    if (item.kind === "drive") {
+      const id = sanitizeDriveFileId(item.fileId);
+      if (id) ids.push(id);
+    }
+  }
+  return ids;
+}
+
 export type ResolvedMedia = {
   buffer: ArrayBuffer;
   mimeType: string;
