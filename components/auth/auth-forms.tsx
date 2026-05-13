@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatAuthCallbackError, formatAuthUserMessage } from "@/lib/auth/auth-errors";
 import { authHref, sanitizeRedirectPath } from "@/lib/auth/safe-next";
+import { InlineSpinner } from "@/components/ui/inline-spinner";
 import { isSupabasePublicConfigured } from "@/lib/env/supabase-public";
 import { tryCreateBrowserSupabaseClient } from "@/lib/supabase/client";
 
@@ -71,7 +72,9 @@ export function AuthForms({
   const router = useRouter();
   const searchParams = useSearchParams();
   const [mode, setMode] = useState<Mode>(initialMode);
-  const [pending, setPending] = useState(false);
+  const [loginSubmitting, setLoginSubmitting] = useState(false);
+  const [signupSubmitting, setSignupSubmitting] = useState(false);
+  const [forgotSubmitting, setForgotSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [showLoginPassword, setShowLoginPassword] = useState(false);
@@ -136,19 +139,22 @@ export function AuthForms({
       setFormError(cool);
       return;
     }
-    setPending(true);
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-    setPending(false);
-    if (error) {
-      if (isAuthRateLimitError(error)) armAuthCooldown();
-      setFormError(formatAuthUserMessage(error, "login"));
-      return;
+    setLoginSubmitting(true);
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      if (error) {
+        if (isAuthRateLimitError(error)) armAuthCooldown();
+        setFormError(formatAuthUserMessage(error, "login"));
+        return;
+      }
+      router.push(afterLoginPath);
+      router.refresh();
+    } finally {
+      setLoginSubmitting(false);
     }
-    router.push(afterLoginPath);
-    router.refresh();
   }
 
   async function handleSignup(e: React.FormEvent<HTMLFormElement>) {
@@ -185,31 +191,34 @@ export function AuthForms({
     const origin = window.location.origin;
     const emailRedirectTo = `${origin}/auth/callback?next=${encodeURIComponent(afterLoginPath)}`;
 
-    setPending(true);
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo,
-        data: name
-          ? { full_name: name, display_name: name }
-          : undefined,
-      },
-    });
-    setPending(false);
-    if (error) {
-      if (isAuthRateLimitError(error)) armAuthCooldown();
-      setFormError(formatAuthUserMessage(error, "signup"));
-      return;
+    setSignupSubmitting(true);
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo,
+          data: name
+            ? { full_name: name, display_name: name }
+            : undefined,
+        },
+      });
+      if (error) {
+        if (isAuthRateLimitError(error)) armAuthCooldown();
+        setFormError(formatAuthUserMessage(error, "signup"));
+        return;
+      }
+      if (data.session) {
+        router.push(afterLoginPath);
+        router.refresh();
+        return;
+      }
+      setInfo(
+        "Check your email for a confirmation link. After you confirm, you can log in.",
+      );
+    } finally {
+      setSignupSubmitting(false);
     }
-    if (data.session) {
-      router.push(afterLoginPath);
-      router.refresh();
-      return;
-    }
-    setInfo(
-      "Check your email for a confirmation link. After you confirm, you can log in.",
-    );
   }
 
   async function handleForgot(e: React.FormEvent<HTMLFormElement>) {
@@ -235,19 +244,22 @@ export function AuthForms({
     const origin = window.location.origin;
     const redirectTo = `${origin}/auth/callback?next=${encodeURIComponent("/auth/update-password")}`;
 
-    setPending(true);
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo,
-    });
-    setPending(false);
-    if (error) {
-      if (isAuthRateLimitError(error)) armAuthCooldown();
-      setFormError(formatAuthUserMessage(error, "forgot"));
-      return;
+    setForgotSubmitting(true);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo,
+      });
+      if (error) {
+        if (isAuthRateLimitError(error)) armAuthCooldown();
+        setFormError(formatAuthUserMessage(error, "forgot"));
+        return;
+      }
+      setInfo(
+        "If an account exists for that email, you will receive a reset link shortly.",
+      );
+    } finally {
+      setForgotSubmitting(false);
     }
-    setInfo(
-      "If an account exists for that email, you will receive a reset link shortly.",
-    );
   }
 
   return (
@@ -380,10 +392,17 @@ export function AuthForms({
             ) : null}
             <button
               type="submit"
-              disabled={pending}
-              className="flex w-full items-center justify-center rounded-xl bg-gradient-to-b from-indigo-600 to-indigo-700 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-600/30 ring-1 ring-indigo-500/30 transition hover:from-indigo-500 hover:to-indigo-600 disabled:opacity-60"
+              disabled={loginSubmitting}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-indigo-600 to-indigo-700 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-600/30 ring-1 ring-indigo-500/30 transition hover:from-indigo-500 hover:to-indigo-600 disabled:pointer-events-none disabled:opacity-60"
             >
-              {pending ? "Please wait…" : "Log in"}
+              {loginSubmitting ? (
+                <>
+                  <InlineSpinner tone="onDark" />
+                  Signing in…
+                </>
+              ) : (
+                "Log in"
+              )}
             </button>
           </form>
         </>
@@ -495,10 +514,17 @@ export function AuthForms({
             ) : null}
             <button
               type="submit"
-              disabled={pending}
-              className="flex w-full items-center justify-center rounded-xl bg-gradient-to-b from-indigo-600 to-indigo-700 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-600/30 ring-1 ring-indigo-500/30 transition hover:from-indigo-500 hover:to-indigo-600 disabled:opacity-60"
+              disabled={signupSubmitting}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-indigo-600 to-indigo-700 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-600/30 ring-1 ring-indigo-500/30 transition hover:from-indigo-500 hover:to-indigo-600 disabled:pointer-events-none disabled:opacity-60"
             >
-              {pending ? "Please wait…" : "Create account"}
+              {signupSubmitting ? (
+                <>
+                  <InlineSpinner tone="onDark" />
+                  Creating account…
+                </>
+              ) : (
+                "Create account"
+              )}
             </button>
             <p className="text-center text-xs text-slate-500">
               By continuing you agree to our{" "}
@@ -558,10 +584,17 @@ export function AuthForms({
             ) : null}
             <button
               type="submit"
-              disabled={pending}
-              className="flex w-full items-center justify-center rounded-xl bg-gradient-to-b from-indigo-600 to-indigo-700 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-600/30 ring-1 ring-indigo-500/30 transition hover:from-indigo-500 hover:to-indigo-600 disabled:opacity-60"
+              disabled={forgotSubmitting}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-indigo-600 to-indigo-700 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-600/30 ring-1 ring-indigo-500/30 transition hover:from-indigo-500 hover:to-indigo-600 disabled:pointer-events-none disabled:opacity-60"
             >
-              {pending ? "Please wait…" : "Send reset link"}
+              {forgotSubmitting ? (
+                <>
+                  <InlineSpinner tone="onDark" />
+                  Sending link…
+                </>
+              ) : (
+                "Send reset link"
+              )}
             </button>
             <p className="text-center text-sm text-slate-600">
               <Link

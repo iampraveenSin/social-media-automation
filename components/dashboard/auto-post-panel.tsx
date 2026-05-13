@@ -15,7 +15,7 @@ export async function AutoPostPanel() {
     );
   }
 
-  const [{ data, error }, driveCheck] = await Promise.all([
+  const [{ data, error }, driveCheck, metaCheck] = await Promise.all([
     supabase
       .from("auto_post_settings")
       .select(
@@ -26,6 +26,11 @@ export async function AutoPostPanel() {
     supabase
       .from("google_drive_accounts")
       .select("user_id")
+      .eq("user_id", user.id)
+      .maybeSingle(),
+    supabase
+      .from("meta_accounts")
+      .select("selected_page_id, page_access_token, instagram_account_id")
       .eq("user_id", user.id)
       .maybeSingle(),
   ]);
@@ -73,10 +78,25 @@ export async function AutoPostPanel() {
     lastError: row?.last_error ?? null,
   };
 
+  const meta = metaCheck.data as {
+    selected_page_id: string | null;
+    page_access_token: string | null;
+    instagram_account_id: string | null;
+  } | null;
+
+  const metaFacebookReady = Boolean(
+    meta?.selected_page_id && meta?.page_access_token,
+  );
+  const metaInstagramReady = Boolean(
+    metaFacebookReady && meta?.instagram_account_id,
+  );
+
   return (
     <AutoPostSettingsForm
       initial={initial}
       driveConnected={Boolean(driveCheck.data)}
+      metaFacebookReady={metaFacebookReady}
+      metaInstagramReady={metaInstagramReady}
     />
   );
 }
