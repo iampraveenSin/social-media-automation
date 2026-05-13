@@ -9,8 +9,19 @@ import {
 import type { AutoPostChannel } from "@/lib/auto-post/channel";
 import type { AutoPostNextRunTimeMode } from "@/lib/auto-post/next-run-time-mode";
 import { pickNextSmartRunUtc } from "@/lib/auto-post/smart-run-time";
+import { InlineSpinner } from "@/components/ui/inline-spinner";
 
 const MIN_LEAD_MS = 60_000;
+
+function metaReadyForAutoPostChannel(
+  channel: AutoPostChannel,
+  metaFacebookReady: boolean,
+  metaInstagramReady: boolean,
+): boolean {
+  if (channel === "facebook") return metaFacebookReady;
+  if (channel === "instagram") return metaInstagramReady;
+  return metaFacebookReady && metaInstagramReady;
+}
 
 export type AutoPostFormInitial = {
   enabled: boolean;
@@ -40,9 +51,13 @@ function dateToDatetimeLocalValue(d: Date): string {
 export function AutoPostSettingsForm({
   initial,
   driveConnected,
+  metaFacebookReady,
+  metaInstagramReady,
 }: {
   initial: AutoPostFormInitial;
   driveConnected: boolean;
+  metaFacebookReady: boolean;
+  metaInstagramReady: boolean;
 }) {
   const [enabled, setEnabled] = useState(initial.enabled);
   const [cadence, setCadence] = useState(initial.cadence);
@@ -90,6 +105,31 @@ export function AutoPostSettingsForm({
     prevChannel.current = channel;
   }, [enabled, timeMode, channel, bumpSmartTime]);
 
+  const metaReadyForChannel = metaReadyForAutoPostChannel(
+    channel,
+    metaFacebookReady,
+    metaInstagramReady,
+  );
+
+  const runsCanProceed = driveConnected && metaReadyForChannel;
+  const runsPausedWhileEnabled = enabled && !runsCanProceed;
+
+  const pausedLabel =
+    enabled && !runsCanProceed
+      ? !driveConnected && !metaReadyForChannel
+        ? "· paused (Drive & Meta)"
+        : !driveConnected
+          ? "· paused (Drive)"
+          : "· paused (Meta)"
+      : null;
+
+  const metaPauseHint =
+    channel === "facebook"
+      ? "Connect Facebook on Main — choose a Page and finish Meta login."
+      : channel === "instagram"
+        ? "On Main, connect Meta with a Page and an Instagram Business account linked to that Page."
+        : "On Main, connect Meta: Facebook Page plus Instagram Business on that Page (both are used each run).";
+
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
     setMessage(null);
@@ -134,14 +174,30 @@ export function AutoPostSettingsForm({
       scheduleTimezone,
     };
 
+    const savedMetaReady = metaReadyForAutoPostChannel(
+      channel,
+      metaFacebookReady,
+      metaInstagramReady,
+    );
+    const savedRunsReady = driveConnected && savedMetaReady;
+
     startTransition(async () => {
       const res = await saveAutoPostSettings(payload);
       if (res.ok) {
-        setMessage(
-          enabled
-            ? "Saved. Automatic posts will run on the schedule you set."
-            : "Auto posting is off.",
-        );
+        if (enabled && !savedRunsReady) {
+          const bits: string[] = [];
+          if (!driveConnected) bits.push("Google Drive on Main");
+          if (!savedMetaReady) bits.push("Facebook / Instagram on Main");
+          setMessage(
+            `Saved. Auto-post stays on but stays paused until you connect ${bits.join(" and ")}.`,
+          );
+        } else {
+          setMessage(
+            enabled
+              ? "Saved. Automatic posts will run on the schedule you set."
+              : "Auto posting is off.",
+          );
+        }
         setLastError(null);
       } else {
         setError(res.error);
@@ -172,7 +228,7 @@ export function AutoPostSettingsForm({
           Drive is connected. Auto-post will use it automatically—no folder ID
           required unless you want to limit picks to a single folder.
         </p>
-      ) : (
+      ) : !enabled ? (
         <p
           className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950"
           role="status"
@@ -180,7 +236,7 @@ export function AutoPostSettingsForm({
           Connect Google Drive on the Main tab first; auto-post reads media from that
           same account.
         </p>
-      )}
+      ) : null}
 
       <label className="mt-6 flex cursor-pointer items-center gap-3">
         <input
@@ -191,8 +247,48 @@ export function AutoPostSettingsForm({
         />
         <span className="text-sm font-medium text-slate-900">
           Enable automatic posts
+          {pausedLabel ? (
+            <span className="ml-2 font-normal text-amber-800">{pausedLabel}</span>
+          ) : null}
         </span>
       </label>
+
+      {runsPausedWhileEnabled ? (
+        <div
+          className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-950"
+          role="status"
+        >
+          <p className="font-semibold text-amber-950">
+            Automatic posting is on in settings, but runs are paused until
+            everything below is ready.
+          </p>
+          <ul className="mt-2 list-inside list-disc space-y-1.5 text-amber-950/95">
+            {!driveConnected ? (
+              <li>
+                <strong className="font-semibold">Google Drive</strong> — connect
+                on the Main tab; random picks come from that library.
+              </li>
+            ) : null}
+            {!metaReadyForChannel ? (
+              <li>
+                <strong className="font-semibold">Meta</strong> — {metaPauseHint}
+              </li>
+            ) : null}
+          </ul>
+          {lastError ? (
+            <p className="mt-3 border-t border-amber-200/80 pt-2 text-xs text-amber-900/90">
+              Last run note: {lastError}
+            </p>
+          ) : null}
+        </div>
+      ) : lastError ? (
+        <p
+          className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950"
+          role="status"
+        >
+          Last run issue: {lastError}
+        </p>
+      ) : null}
 
       <div className="mt-6 space-y-4">
         <label className="block">
@@ -274,7 +370,11 @@ export function AutoPostSettingsForm({
             <input
               type="datetime-local"
               value={nextRunLocal}
-              min={dateToDatetimeLocalValue(new Date(Date.now() + MIN_LEAD_MS))}
+              min={
+                // Next-run picker must stay ahead of wall clock; value updates on re-render.
+                // eslint-disable-next-line react-hooks/purity -- intentional Date.now() for datetime-local min
+                dateToDatetimeLocalValue(new Date(Date.now() + MIN_LEAD_MS))
+              }
               onChange={(e) => setNextRunLocal(e.target.value)}
               disabled={!enabled}
               className="w-full max-w-xs rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 disabled:opacity-50"
@@ -329,21 +429,19 @@ export function AutoPostSettingsForm({
         </details>
       </div>
 
-      {lastError ? (
-        <p
-          className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950"
-          role="status"
-        >
-          Last run issue: {lastError}
-        </p>
-      ) : null}
-
       <button
         type="submit"
         disabled={pending}
-        className="mt-6 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:opacity-50"
+        className="mt-6 inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:pointer-events-none disabled:opacity-50"
       >
-        {pending ? "Saving…" : "Save settings"}
+        {pending ? (
+          <>
+            <InlineSpinner tone="onDark" />
+            Saving…
+          </>
+        ) : (
+          "Save settings"
+        )}
       </button>
 
       {message ? (

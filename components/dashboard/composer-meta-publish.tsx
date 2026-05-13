@@ -24,6 +24,7 @@ import {
   useComposer,
 } from "./composer-context";
 import { formatDashboardDateTime } from "@/lib/datetime/format-dashboard-datetime";
+import { InlineSpinner } from "@/components/ui/inline-spinner";
 
 export type MetaAccountSummary = {
   pageName: string | null;
@@ -330,9 +331,16 @@ export function ComposerMetaPublish({
           type="button"
           onClick={onGenerate}
           disabled={items.length === 0 || busy}
-          className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-2.5 text-sm font-semibold text-violet-900 shadow-sm transition hover:bg-violet-100 disabled:opacity-50"
+          className="inline-flex items-center justify-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-4 py-2.5 text-sm font-semibold text-violet-900 shadow-sm transition hover:bg-violet-100 disabled:pointer-events-none disabled:opacity-50"
         >
-          {genPending ? "Analyzing…" : "Generate caption & hashtags"}
+          {genPending ? (
+            <>
+              <InlineSpinner tone="indigo" />
+              Analyzing…
+            </>
+          ) : (
+            "Generate caption & hashtags"
+          )}
         </button>
       </div>
 
@@ -407,7 +415,7 @@ export function ComposerMetaPublish({
             ((scheduleChannel === "instagram" || scheduleChannel === "both") &&
               !metaAccount.instagramConnected)
           }
-          className="mt-3 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-slate-50 disabled:opacity-50"
+          className="mt-3 inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-slate-50 disabled:pointer-events-none disabled:opacity-50"
           title={
             !pageReady
               ? "Connect Facebook and choose a Page first — scheduled posts publish to your Page."
@@ -418,7 +426,14 @@ export function ComposerMetaPublish({
               : undefined
           }
         >
-          {schedPending ? "Saving…" : "Schedule post"}
+          {schedPending ? (
+            <>
+              <InlineSpinner tone="slate" />
+              Saving…
+            </>
+          ) : (
+            "Schedule post"
+          )}
         </button>
         {!pageReady ? (
           <p className="mt-2 text-xs text-amber-800">
@@ -438,14 +453,21 @@ export function ComposerMetaPublish({
           type="button"
           onClick={onPublish}
           disabled={publishDisabled || !pageReady}
-          className="rounded-xl bg-[#0866FF] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#0756d9] disabled:opacity-50"
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#0866FF] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#0756d9] disabled:pointer-events-none disabled:opacity-50"
           title={
             !pageReady
               ? "Connect Meta and select a Page in the section above"
               : undefined
           }
         >
-          {pubPending ? "Publishing…" : "Publish to Facebook"}
+          {pubPending ? (
+            <>
+              <InlineSpinner tone="facebook" />
+              Publishing…
+            </>
+          ) : (
+            "Publish to Facebook"
+          )}
         </button>
         <button
           type="button"
@@ -455,14 +477,21 @@ export function ComposerMetaPublish({
             !metaAccount.instagramConnected ||
             !metaAccount.pageName
           }
-          className="rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:opacity-95 disabled:opacity-50"
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:opacity-95 disabled:pointer-events-none disabled:opacity-50"
           title={
             !metaAccount.instagramConnected
               ? "Link Instagram Business to your Page and reconnect Meta"
               : undefined
           }
         >
-          {igPending ? "Publishing…" : "Publish to Instagram"}
+          {igPending ? (
+            <>
+              <InlineSpinner tone="onDark" />
+              Publishing…
+            </>
+          ) : (
+            "Publish to Instagram"
+          )}
         </button>
         <span className="text-xs text-slate-400">
           {buildFullCaption(caption, hashtags).length}/8000 (publish total)

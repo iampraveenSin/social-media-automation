@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { tryCreateBrowserSupabaseClient } from "@/lib/supabase/client";
+import { InlineSpinner } from "@/components/ui/inline-spinner";
 
 export function LogoutButton() {
   const router = useRouter();
@@ -26,9 +27,16 @@ export function LogoutButton() {
       type="button"
       onClick={handleLogout}
       disabled={pending}
-      className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-60"
+      className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:pointer-events-none disabled:opacity-60"
     >
-      {pending ? "Signing out…" : "Log out"}
+      {pending ? (
+        <>
+          <InlineSpinner tone="slate" />
+          Signing out…
+        </>
+      ) : (
+        "Log out"
+      )}
     </button>
   );
 }

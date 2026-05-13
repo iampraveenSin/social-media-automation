@@ -1,4 +1,6 @@
 import { disconnectMeta, selectMetaPage } from "@/app/actions/meta";
+import { MetaOauthLink } from "@/components/dashboard/meta-oauth-link";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { getMetaAppConfig } from "@/lib/env/meta";
 import { fetchManagedPages } from "@/lib/meta/graph";
 import type { MetaAccountRow } from "@/lib/meta/types";
@@ -59,15 +61,12 @@ export async function MetaConnectSection() {
           Sign in with Facebook, approve permissions, then choose which Page to
           use for posts (and its linked Instagram account when available).
         </p>
-        <a
-          href="/api/meta/connect"
-          className="mt-5 inline-flex items-center justify-center gap-2 rounded-xl bg-[#0866FF] px-5 py-3 text-sm font-semibold text-white shadow-md transition hover:bg-[#0756d9]"
-        >
-          <svg className="size-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+        <MetaOauthLink className="mt-5 rounded-xl bg-[#0866FF] px-5 py-3 text-sm font-semibold text-white shadow-md transition hover:bg-[#0756d9]">
+          <svg className="size-5 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
             <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
           </svg>
           Continue with Facebook
-        </a>
+        </MetaOauthLink>
       </section>
     );
   }
@@ -86,12 +85,9 @@ export async function MetaConnectSection() {
         <section className="rounded-2xl border border-red-200 bg-white p-6 shadow-sm">
           <h2 className="text-lg font-semibold text-slate-900">Select a Page</h2>
           <p className="mt-2 text-sm text-red-600">{loadError}</p>
-          <a
-            href="/api/meta/connect"
-            className="mt-4 inline-flex rounded-xl bg-[#0866FF] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#0756d9]"
-          >
+          <MetaOauthLink className="mt-4 rounded-xl bg-[#0866FF] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#0756d9]">
             Reconnect with Facebook
-          </a>
+          </MetaOauthLink>
         </section>
       );
     }
@@ -104,12 +100,9 @@ export async function MetaConnectSection() {
             This Facebook account doesn&apos;t manage any Pages. Create a Page in
             Meta Business Suite, then reconnect.
           </p>
-          <a
-            href="/api/meta/connect"
-            className="mt-4 inline-flex rounded-xl bg-[#0866FF] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#0756d9]"
-          >
+          <MetaOauthLink className="mt-4 rounded-xl bg-[#0866FF] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#0756d9]">
             Try again
-          </a>
+          </MetaOauthLink>
         </section>
       );
     }
@@ -153,12 +146,12 @@ export async function MetaConnectSection() {
               </label>
             ))}
           </fieldset>
-          <button
-            type="submit"
+          <PendingSubmitButton
+            label="Use selected Page"
+            pendingLabel="Saving…"
+            spinnerTone="onDark"
             className="w-full rounded-xl bg-indigo-600 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 sm:w-auto sm:px-8"
-          >
-            Use selected Page
-          </button>
+          />
         </form>
       </section>
     );
@@ -181,19 +174,16 @@ export async function MetaConnectSection() {
         ) : null}
       </p>
       <div className="mt-4 flex flex-wrap gap-3">
-        <a
-          href="/api/meta/connect"
-          className="inline-flex rounded-xl border border-emerald-300 bg-white px-4 py-2 text-sm font-semibold text-emerald-900 shadow-sm transition hover:bg-emerald-50"
-        >
+        <MetaOauthLink className="inline-flex rounded-xl border border-emerald-300 bg-white px-4 py-2 text-sm font-semibold text-emerald-900 shadow-sm transition hover:bg-emerald-50">
           Reconnect / switch account
-        </a>
+        </MetaOauthLink>
         <form action={disconnectMeta}>
-          <button
-            type="submit"
-            className="inline-flex rounded-xl border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-800 shadow-sm transition hover:bg-red-50"
-          >
-            Disconnect
-          </button>
+          <PendingSubmitButton
+            label="Disconnect"
+            pendingLabel="Disconnecting…"
+            spinnerTone="red"
+            className="rounded-xl border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-800 shadow-sm transition hover:bg-red-50"
+          />
         </form>
       </div>
       <p className="mt-4 text-xs text-emerald-800/80">

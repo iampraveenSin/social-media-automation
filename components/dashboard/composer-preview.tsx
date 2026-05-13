@@ -25,6 +25,7 @@ import {
   type LogoCorner,
   useComposer,
 } from "./composer-context";
+import { InlineSpinner } from "@/components/ui/inline-spinner";
 
 function mediaSrc(item: ComposerItem): string {
   if (item.kind === "upload") return item.previewUrl;
@@ -302,6 +303,7 @@ export function ComposerPreview({
             htmlFor={dropId}
             onDragEnter={(e) => {
               e.preventDefault();
+              if (uploadBusy) return;
               setDragOver(true);
             }}
             onDragLeave={(e) => {
@@ -316,12 +318,15 @@ export function ComposerPreview({
             onDrop={(e) => {
               e.preventDefault();
               setDragOver(false);
+              if (uploadBusy) return;
               void onPickFiles(e.dataTransfer.files);
             }}
-            className={`flex min-h-[140px] cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed px-4 py-8 text-center transition ${
-              dragOver
-                ? "border-indigo-400 bg-indigo-50/80"
-                : "border-slate-200 bg-slate-50/50 hover:border-slate-300"
+            className={`flex min-h-[140px] flex-col items-center justify-center rounded-2xl border-2 border-dashed px-4 py-8 text-center transition ${
+              uploadBusy
+                ? "cursor-wait border-slate-200 bg-slate-50/80"
+                : dragOver
+                  ? "cursor-pointer border-indigo-400 bg-indigo-50/80"
+                  : "cursor-pointer border-slate-200 bg-slate-50/50 hover:border-slate-300"
             }`}
           >
             <input
@@ -329,18 +334,27 @@ export function ComposerPreview({
               type="file"
               accept="image/*,video/*"
               multiple
+              disabled={uploadBusy}
               className="sr-only"
               onChange={(e) => {
                 void onPickFiles(e.target.files);
                 e.target.value = "";
               }}
             />
-            <span className="text-sm font-semibold text-slate-800">
-              {uploadBusy ? "Uploading…" : "Drop images or video here"}
+            <span className="inline-flex items-center gap-2 text-sm font-semibold text-slate-800">
+              {uploadBusy ? (
+                <>
+                  <InlineSpinner tone="indigo" />
+                  Uploading…
+                </>
+              ) : (
+                "Drop images or video here"
+              )}
             </span>
             <span className="mt-1 text-xs text-slate-500">
-              Or click to choose — files are saved privately to your account when
-              you&apos;re signed in
+              {uploadBusy
+                ? "Please wait — files are uploading to your account."
+                : "Or click to choose — files are saved privately to your account when you&apos;re signed in"}
             </span>
           </label>
           {storageNote ? (

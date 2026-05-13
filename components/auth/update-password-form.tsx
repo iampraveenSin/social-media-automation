@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { formatAuthUserMessage } from "@/lib/auth/auth-errors";
+import { InlineSpinner } from "@/components/ui/inline-spinner";
 import { tryCreateBrowserSupabaseClient } from "@/lib/supabase/client";
 
 export function UpdatePasswordForm() {
@@ -35,14 +36,17 @@ export function UpdatePasswordForm() {
       return;
     }
     setPending(true);
-    const { error } = await supabase.auth.updateUser({ password });
-    setPending(false);
-    if (error) {
-      setFormError(formatAuthUserMessage(error, "login"));
-      return;
+    try {
+      const { error } = await supabase.auth.updateUser({ password });
+      if (error) {
+        setFormError(formatAuthUserMessage(error, "login"));
+        return;
+      }
+      router.push("/dashboard/main");
+      router.refresh();
+    } finally {
+      setPending(false);
     }
-    router.push("/dashboard/main");
-    router.refresh();
   }
 
   return (
@@ -114,9 +118,16 @@ export function UpdatePasswordForm() {
         <button
           type="submit"
           disabled={pending}
-          className="w-full rounded-xl bg-indigo-600 py-3 text-sm font-semibold text-white shadow-md transition hover:bg-indigo-500 disabled:opacity-60"
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 py-3 text-sm font-semibold text-white shadow-md transition hover:bg-indigo-500 disabled:pointer-events-none disabled:opacity-60"
         >
-          {pending ? "Saving…" : "Update password"}
+          {pending ? (
+            <>
+              <InlineSpinner tone="onDark" />
+              Saving…
+            </>
+          ) : (
+            "Update password"
+          )}
         </button>
       </form>
       <p className="mt-6 text-center text-sm text-slate-600">

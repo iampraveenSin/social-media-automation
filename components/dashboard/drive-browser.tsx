@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { disconnectGoogleDrive } from "@/app/actions/google-drive";
+import { InlineSpinner } from "@/components/ui/inline-spinner";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import {
   isFolderMime,
   isGifMime,
@@ -168,10 +170,7 @@ export function DriveBrowser({ connectedAs }: { connectedAs: string | null }) {
           >
             {randomPicking ? (
               <>
-                <span
-                  className="size-4 shrink-0 rounded-full border-2 border-indigo-300 border-t-indigo-800 animate-spin"
-                  aria-hidden
-                />
+                <InlineSpinner tone="indigo" />
                 <span>Picking…</span>
               </>
             ) : (
@@ -179,12 +178,12 @@ export function DriveBrowser({ connectedAs }: { connectedAs: string | null }) {
             )}
           </button>
           <form action={disconnectGoogleDrive}>
-            <button
-              type="submit"
+            <PendingSubmitButton
+              label="Disconnect Drive"
+              pendingLabel="Disconnecting…"
+              spinnerTone="red"
               className="rounded-xl border border-red-200 bg-white px-3 py-2 text-sm font-semibold text-red-800 hover:bg-red-50"
-            >
-              Disconnect Drive
-            </button>
+            />
           </form>
         </div>
       </div>
