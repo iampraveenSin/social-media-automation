@@ -1,8 +1,8 @@
 /** Paths reachable without a Supabase session (exact match after normalize). */
 const PUBLIC_PATHS = new Set([
   "/",
-  "/privacy",
-  "/terms",
+  "/privacy-policy",
+  "/terms-of-service",
   "/data-deletion",
   "/login",
   "/signup",

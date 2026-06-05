@@ -41,7 +41,10 @@ export default function DataDeletionPage() {
         </p>
         <p>
           Read our{" "}
-          <Link href="/privacy" className="font-medium text-primary underline">
+          <Link
+            href="/privacy-policy"
+            className="font-medium text-primary underline"
+          >
             Privacy Policy
           </Link>{" "}
           for more context.

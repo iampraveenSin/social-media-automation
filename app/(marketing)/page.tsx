@@ -1,5 +1,9 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { HeroPreview } from "@/components/marketing/hero-preview";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
+
+export const dynamic = "force-dynamic";
 
 function Section({
   id,
@@ -148,7 +152,19 @@ function Stars() {
   );
 }
 
-export default function HomePage() {
+export default async function HomePage() {
+  try {
+    const supabase = await createServerSupabaseClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (user) {
+      redirect("/dashboard");
+    }
+  } catch {
+    // ignore errors and render marketing page for anonymous visitors
+  }
+
   return (
     <div className="bg-background">
       {/* Hero */}
@@ -286,7 +302,7 @@ export default function HomePage() {
             Drive URLs so we don&apos;t duplicate that media. Manual uploads may
             be stored for a stable publish URL — see our{" "}
             <Link
-              href="/privacy"
+              href="/privacy-policy"
               className="font-semibold text-indigo-700 underline decoration-indigo-300 underline-offset-2 hover:text-indigo-900"
             >
               Privacy Policy
@@ -296,7 +312,7 @@ export default function HomePage() {
           <p className="mt-4">
             Review{" "}
             <Link
-              href="/terms"
+              href="/terms-of-service"
               className="font-semibold text-indigo-700 underline decoration-indigo-300 underline-offset-2"
             >
               Terms

@@ -141,7 +141,7 @@ export function AuthForms({
     }
     setLoginSubmitting(true);
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
@@ -149,6 +149,21 @@ export function AuthForms({
         if (isAuthRateLimitError(error)) armAuthCooldown();
         setFormError(formatAuthUserMessage(error, "login"));
         return;
+      }
+      if (data?.session) {
+        try {
+          await fetch("/auth/session", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({
+              access_token: data.session.access_token,
+              refresh_token: data.session.refresh_token,
+            }),
+          });
+        } catch {
+          // ignore server cookie set failures
+        }
       }
       router.push(afterLoginPath);
       router.refresh();
@@ -209,6 +224,19 @@ export function AuthForms({
         return;
       }
       if (data.session) {
+        try {
+          await fetch("/auth/session", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({
+              access_token: data.session.access_token,
+              refresh_token: data.session.refresh_token,
+            }),
+          });
+        } catch {
+          // ignore
+        }
         router.push(afterLoginPath);
         router.refresh();
         return;
@@ -529,14 +557,14 @@ export function AuthForms({
             <p className="text-center text-xs text-slate-500">
               By continuing you agree to our{" "}
               <Link
-                href="/terms"
+                href="/terms-of-service"
                 className="font-medium text-indigo-600 underline"
               >
                 Terms
               </Link>{" "}
               and{" "}
               <Link
-                href="/privacy"
+                href="/privacy-policy"
                 className="font-medium text-indigo-600 underline"
               >
                 Privacy Policy
