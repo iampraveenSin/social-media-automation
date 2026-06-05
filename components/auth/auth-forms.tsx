@@ -151,19 +151,9 @@ export function AuthForms({
         return;
       }
       if (data?.session) {
-        try {
-          await fetch("/auth/session", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            credentials: "include",
-            body: JSON.stringify({
-              access_token: data.session.access_token,
-              refresh_token: data.session.refresh_token,
-            }),
-          });
-        } catch {
-          // ignore server cookie set failures
-        }
+        router.push(afterLoginPath);
+        router.refresh();
+        return;
       }
       router.push(afterLoginPath);
       router.refresh();
@@ -224,19 +214,6 @@ export function AuthForms({
         return;
       }
       if (data.session) {
-        try {
-          await fetch("/auth/session", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            credentials: "include",
-            body: JSON.stringify({
-              access_token: data.session.access_token,
-              refresh_token: data.session.refresh_token,
-            }),
-          });
-        } catch {
-          // ignore
-        }
         router.push(afterLoginPath);
         router.refresh();
         return;

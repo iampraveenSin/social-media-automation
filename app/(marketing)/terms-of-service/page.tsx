@@ -13,31 +13,36 @@ export default function TermsPage() {
       <h1 className="mt-2 text-3xl font-semibold tracking-tight text-foreground">
         Terms of Service
       </h1>
-      <p className="mt-2 text-sm text-muted">Last updated: April 4, 2026</p>
+      <p className="mt-2 text-sm text-muted">Last updated: June 6, 2026</p>
       <div className="mt-10 max-w-none space-y-6 text-base leading-relaxed text-muted">
         <p>
-          These Terms of Service govern your use of Prnit. This is placeholder
-          content for development — have it reviewed by legal counsel before
-          launch.
+          These Terms govern your use of Prnit. By using the service, you agree
+          to follow these terms.
         </p>
         <h2 className="text-xl font-semibold text-foreground">The service</h2>
         <p>
-          Prnit provides tools to help you manage social media posting and related
-          workflows. Features may change as we improve the product.
+          Prnit provides tools to help you manage social media publishing,
+          scheduling, and content workflow.
         </p>
         <h2 className="text-xl font-semibold text-foreground">Your account</h2>
         <p>
-          You are responsible for your account credentials and for content you
-          publish through the service. You must comply with Meta, Google, and
-          other platforms&apos; terms when using integrations.
+          You are responsible for keeping your account credentials secure and
+          for any activity initiated through your account.
         </p>
         <h2 className="text-xl font-semibold text-foreground">
-          Disclaimers &amp; limitation
+          Usage requirements
         </h2>
         <p>
-          The service is provided &ldquo;as is.&rdquo; To the maximum extent
-          permitted by law, we disclaim warranties and limit liability as your
-          counsel advises for your jurisdiction.
+          Use the service responsibly and do not attempt to access another user's
+          account or content without permission.
+        </p>
+        <h2 className="text-xl font-semibold text-foreground">
+          Disclaimers & limitation
+        </h2>
+        <p>
+          The service is provided “as is.” To the extent permitted by law, the
+          provider disclaims warranties and limits liability for the use of the
+          application.
         </p>
         <p>
           See also our{" "}

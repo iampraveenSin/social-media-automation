@@ -17,24 +17,12 @@ export function ClientAuthRedirect() {
           data: { session },
         } = await supabase.auth.getSession();
 
-        if (!session) {
-          return;
+        if (session) {
+          router.replace("/dashboard");
         }
-
-        await fetch("/auth/session", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({
-            access_token: session.access_token,
-            refresh_token: session.refresh_token,
-          }),
-        });
       } catch {
-        // ignore failures here, but redirect if a browser session exists
+        // ignore failures and keep showing marketing page for anonymous users
       }
-
-      router.replace("/dashboard");
     }
 
     syncSession();

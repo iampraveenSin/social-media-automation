@@ -24,26 +24,40 @@ export async function POST(request: NextRequest) {
   console.log("POST /auth/session called");
   const response = NextResponse.json({ ok: true });
 
-  const supabase = createServerClient(config.url, config.anonKey, {
-    cookies: {
-      getAll() {
-        return request.cookies.getAll();
+  try {
+    const supabase = createServerClient(config.url, config.anonKey, {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet, headers) {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            response.cookies.set(name, value, options);
+          });
+          Object.entries(headers).forEach(([key, value]) => {
+            if (Array.isArray(value)) {
+              response.headers.set(key, value.join(", "));
+            } else if (typeof value === "string") {
+              response.headers.set(key, value);
+            }
+          });
+        },
       },
-      setAll(cookiesToSet, headers) {
-        cookiesToSet.forEach(({ name, value, options }) => {
-          response.cookies.set(name, value, options);
-        });
-        Object.entries(headers).forEach(([key, value]) => {
-          response.headers.set(key, value as string);
-        });
-      },
-    },
-  });
+    });
 
-  const { error } = await supabase.auth.setSession({ access_token, refresh_token });
-  if (error) {
-    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    const { error } = await supabase.auth.setSession({ access_token, refresh_token });
+    if (error) {
+      console.error("/auth/session setSession error:", error.message);
+      return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    }
+
+    console.log("/auth/session setSession succeeded");
+    return response;
+  } catch (error) {
+    console.error("/auth/session unexpected error:", error);
+    return NextResponse.json(
+      { ok: false, error: error instanceof Error ? error.message : String(error) },
+      { status: 500 },
+    );
   }
-
-  return response;
 }
