@@ -41,7 +41,10 @@ export default function TermsPage() {
         </p>
         <p>
           See also our{" "}
-          <Link href="/privacy" className="font-medium text-primary underline">
+          <Link
+            href="/privacy-policy"
+            className="font-medium text-primary underline"
+          >
             Privacy Policy
           </Link>
           .

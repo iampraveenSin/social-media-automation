@@ -9,8 +9,8 @@ const nav = [
 ] as const;
 
 const legal = [
-  { href: "/privacy", label: "Privacy" },
-  { href: "/terms", label: "Terms" },
+  { href: "/privacy-policy", label: "Privacy" },
+  { href: "/terms-of-service", label: "Terms" },
   { href: "/data-deletion", label: "Data deletion" },
 ] as const;
 
