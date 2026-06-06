@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { HeroPreview } from "@/components/marketing/hero-preview";
+import { ClientAuthRedirect } from "@/components/auth/client-auth-redirect";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -167,6 +168,7 @@ export default async function HomePage() {
 
   return (
     <div className="bg-background">
+      <ClientAuthRedirect />
       {/* Hero */}
       <section className="relative overflow-hidden border-b border-border marketing-hero-mesh">
         <div
