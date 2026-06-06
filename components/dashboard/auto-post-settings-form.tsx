@@ -113,6 +113,8 @@ export function AutoPostSettingsForm({
 
   const runsCanProceed = driveConnected && metaReadyForChannel;
   const runsPausedWhileEnabled = enabled && !runsCanProceed;
+  const canEnableAutoPost = driveConnected && metaReadyForChannel;
+  const enableCheckboxDisabled = !enabled && !canEnableAutoPost;
 
   const pausedLabel =
     enabled && !runsCanProceed
@@ -129,6 +131,12 @@ export function AutoPostSettingsForm({
       : channel === "instagram"
         ? "On Main, connect Meta with a Page and an Instagram Business account linked to that Page."
         : "On Main, connect Meta: Facebook Page plus Instagram Business on that Page (both are used each run).";
+
+  const connectionHint = !driveConnected
+    ? "Connect Google Drive on the Main tab first; auto-post reads media from that same account."
+    : !metaFacebookReady
+      ? "Meta is not fully connected yet. On Main, connect a Facebook Page and finish Meta login before enabling auto-post."
+      : null;
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -228,13 +236,22 @@ export function AutoPostSettingsForm({
           Drive is connected. Auto-post will use it automatically—no folder ID
           required unless you want to limit picks to a single folder.
         </p>
-      ) : !enabled ? (
+      ) : (
         <p
           className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950"
           role="status"
         >
           Connect Google Drive on the Main tab first; auto-post reads media from that
           same account.
+        </p>
+      )}
+
+      {connectionHint ? (
+        <p
+          className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950"
+          role="status"
+        >
+          {connectionHint}
         </p>
       ) : null}
 
@@ -243,7 +260,8 @@ export function AutoPostSettingsForm({
           type="checkbox"
           checked={enabled}
           onChange={(e) => setEnabled(e.target.checked)}
-          className="size-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+          disabled={enableCheckboxDisabled}
+          className="size-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 disabled:opacity-50"
         />
         <span className="text-sm font-medium text-slate-900">
           Enable automatic posts
@@ -252,6 +270,11 @@ export function AutoPostSettingsForm({
           ) : null}
         </span>
       </label>
+      {enableCheckboxDisabled ? (
+        <p className="mt-2 text-sm text-slate-500">
+          Connect Google Drive and Meta on Main before you can turn on auto-posting.
+        </p>
+      ) : null}
 
       {runsPausedWhileEnabled ? (
         <div
