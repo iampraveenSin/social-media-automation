@@ -31,6 +31,8 @@ export async function insertPublishedPostRow(
     publishSource?: PublishedPostSource;
     /** Google Drive file ids used in this publish (Drive items only). */
     driveFileIds?: string[] | null;
+    /** Reference ID for idempotency (scheduled post ID or auto-post timestamp) */
+    referenceId?: string | null;
   },
 ): Promise<void> {
   const caption = args.caption.slice(0, 8000);
@@ -54,10 +56,38 @@ export async function insertPublishedPostRow(
       instagram_username: args.instagramUsername ?? null,
       publish_source: publishSource,
       ...(driveIds.length > 0 ? { drive_file_ids: driveIds } : {}),
+      ...(args.referenceId ? { reference_id: args.referenceId } : {}),
     },
     error_detail: args.errorDetail ?? null,
   });
   if (error) {
     console.error("[published_posts] insert failed:", error.message);
   }
+}
+
+/**
+ * Check if a channel has already been published for a given reference ID.
+ * Used for idempotency to prevent duplicate posts during retries.
+ */
+export async function getChannelPublishStatus(
+  supabase: SupabaseClient,
+  userId: string,
+  referenceId: string,
+  channel: PublishedPostChannel,
+): Promise<{ published: boolean; status: string | null }> {
+  const { data, error } = await supabase
+    .from("published_posts")
+    .select("status")
+    .eq("user_id", userId)
+    .eq("channel", channel)
+    .eq("status", "published")
+    .filter("media_summary", "cs", `{"reference_id":"${referenceId}"}`)
+    .maybeSingle();
+
+  if (error) {
+    console.error("[published_posts] status check failed:", error.message);
+    return { published: false, status: null };
+  }
+
+  return { published: !!data, status: data?.status ?? null };
 }

@@ -2,25 +2,32 @@ import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
 import { getSupabasePublicConfig } from "@/lib/env/supabase-public";
 
+type SessionRequestBody = {
+  access_token?: unknown;
+  refresh_token?: unknown;
+};
+
 export async function POST(request: NextRequest) {
   const config = getSupabasePublicConfig();
   if (!config) {
     return NextResponse.json({ ok: false }, { status: 500 });
   }
 
-  let body: any;
+  let body: SessionRequestBody;
   try {
-    body = await request.json();
+    body = (await request.json()) as SessionRequestBody;
   } catch {
     return NextResponse.json({ ok: false }, { status: 400 });
   }
 
   const { access_token, refresh_token } = body ?? {};
-  if (!access_token || !refresh_token) {
-    return NextResponse.json({ ok: false, error: "missing_tokens" }, { status: 400 });
+  if (typeof access_token !== "string" || typeof refresh_token !== "string") {
+    return NextResponse.json(
+      { ok: false, error: "missing_tokens" },
+      { status: 400 },
+    );
   }
 
-  const origin = new URL(request.url).origin;
   console.log("POST /auth/session called");
   const response = NextResponse.json({ ok: true });
 
@@ -45,10 +52,16 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    const { error } = await supabase.auth.setSession({ access_token, refresh_token });
+    const { error } = await supabase.auth.setSession({
+      access_token,
+      refresh_token,
+    });
     if (error) {
       console.error("/auth/session setSession error:", error.message);
-      return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+      return NextResponse.json(
+        { ok: false, error: error.message },
+        { status: 500 },
+      );
     }
 
     console.log("/auth/session setSession succeeded");
@@ -56,7 +69,10 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("/auth/session unexpected error:", error);
     return NextResponse.json(
-      { ok: false, error: error instanceof Error ? error.message : String(error) },
+      {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      },
       { status: 500 },
     );
   }

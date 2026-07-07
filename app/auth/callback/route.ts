@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  let response = NextResponse.redirect(`${origin}${next}`);
+  const response = NextResponse.redirect(`${origin}${next}`);
 
   const supabase = createServerClient(config.url, config.anonKey, {
     cookies: {
