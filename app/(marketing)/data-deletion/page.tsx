@@ -27,8 +27,14 @@ export default function DataDeletionPage() {
             Log in to your account and use any available in-app deletion option.
           </li>
           <li>
-            If an in-app option is not available, contact the published support
-            address and request account deletion.
+            If an in-app option is not available, contact{" "}
+            <a
+              href="mailto:hello@prnit.com"
+              className="font-medium text-primary underline"
+            >
+              hello@prnit.com
+            </a>{" "}
+            and request account deletion.
           </li>
         </ol>
         <h2 className="text-xl font-semibold text-foreground">What happens next</h2>

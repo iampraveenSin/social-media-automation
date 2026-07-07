@@ -1,5 +1,6 @@
 import { fetchPagePublicDetails } from "@/lib/meta/graph";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import Image from "next/image";
 
 /**
  * Facebook Page summary for Main dashboard (profile image + Page id).
@@ -83,11 +84,12 @@ export async function FacebookInfoSection() {
           <div className="relative shrink-0">
             <div className="absolute -inset-1 rounded-full bg-gradient-to-tr from-blue-400 to-indigo-400 opacity-75 blur-[2px]" />
             {profileUrl ? (
-              <img
+              <Image
                 src={profileUrl}
                 alt=""
                 width={80}
                 height={80}
+                unoptimized
                 className="relative size-20 rounded-full border-4 border-white object-cover shadow-md"
               />
             ) : (

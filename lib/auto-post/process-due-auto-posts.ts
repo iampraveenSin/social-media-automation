@@ -25,6 +25,8 @@ import { normalizeResolvedStillImagesForMeta } from "@/lib/media/normalize-still
 import { fetchPublishedDriveFileIdsSet } from "@/lib/publish/fetch-published-drive-file-ids";
 import { publishToFacebookPageForUser } from "@/lib/publish/facebook-publish-internal";
 import { publishToInstagramForUser } from "@/lib/publish/instagram-publish-internal";
+import { publishWithChannelIdempotency } from "@/lib/publish/channel-idempotency";
+import { getChannelPublishStatus } from "@/lib/publish/published-posts";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 const BATCH = 5;
@@ -33,6 +35,7 @@ const RETRY_MS = 60 * 60 * 1000;
 const LEASE_MS = 25 * 60 * 1000;
 const PUBLISH_ATTEMPTS = 3;
 const PUBLISH_RETRY_DELAY_MS = 2500;
+const AUTO_REFERENCE_MARKER = "auto_reference_id=";
 
 type AutoRow = {
   user_id: string;
@@ -43,10 +46,20 @@ type AutoRow = {
   channel?: string | null;
   next_run_time_mode?: string | null;
   schedule_timezone?: string | null;
+  last_error?: string | null;
 };
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+export function resolveAutoPostReferenceId(
+  userId: string,
+  scheduledSlot: string,
+  lastError?: string | null,
+): string {
+  const match = lastError?.match(/\[auto_reference_id=([^\]]+)\]/);
+  return match?.[1] ?? `auto-${userId}-${scheduledSlot}`;
+}
+
+function formatAutoPostLastError(detail: string, referenceId: string): string {
+  return `[${AUTO_REFERENCE_MARKER}${referenceId}] ${detail}`;
 }
 
 async function publishAutoToChannels(
@@ -58,6 +71,7 @@ async function publishAutoToChannels(
     items: PublishMetaItem[];
     publishedDriveFileIds?: string[] | null;
   },
+  referenceId: string,
 ): Promise<{
   facebookResult: Awaited<
     ReturnType<typeof publishToFacebookPageForUser>
@@ -66,67 +80,28 @@ async function publishAutoToChannels(
     ReturnType<typeof publishToInstagramForUser>
   > | null;
 }> {
-  const opts = { publishSource: "auto" as const };
-  let facebookResult: Awaited<
-    ReturnType<typeof publishToFacebookPageForUser>
-  > | null = null;
-  let instagramResult: Awaited<
-    ReturnType<typeof publishToInstagramForUser>
-  > | null = null;
+  const opts = { publishSource: "auto" as const, referenceId };
 
-  const runFb = async () => {
-    try {
-      return await publishToFacebookPageForUser(admin, userId, payload, opts);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Publish threw.";
-      return { ok: false as const, error: msg };
-    }
-  };
-  const runIg = async () => {
-    try {
-      return await publishToInstagramForUser(admin, userId, payload, opts);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Publish threw.";
-      return { ok: false as const, error: msg };
-    }
-  };
-
-  if (channel === "facebook") {
-    for (let i = 0; i < PUBLISH_ATTEMPTS; i++) {
-      facebookResult = await runFb();
-      if (facebookResult.ok) break;
-      if (i < PUBLISH_ATTEMPTS - 1) await sleep(PUBLISH_RETRY_DELAY_MS);
-    }
-    return { facebookResult, instagramResult };
-  }
-
-  if (channel === "instagram") {
-    for (let i = 0; i < PUBLISH_ATTEMPTS; i++) {
-      instagramResult = await runIg();
-      if (instagramResult.ok) break;
-      if (i < PUBLISH_ATTEMPTS - 1) await sleep(PUBLISH_RETRY_DELAY_MS);
-    }
-    return { facebookResult, instagramResult };
-  }
-
-  // both: Instagram first (stricter API) so we avoid a Facebook-only post if IG fails.
-  for (let i = 0; i < PUBLISH_ATTEMPTS; i++) {
-    instagramResult = await runIg();
-    if (instagramResult.ok) break;
-    if (i < PUBLISH_ATTEMPTS - 1) await sleep(PUBLISH_RETRY_DELAY_MS);
-  }
-
-  if (!instagramResult?.ok) {
-    return { facebookResult: null, instagramResult };
-  }
-
-  for (let i = 0; i < PUBLISH_ATTEMPTS; i++) {
-    facebookResult = await runFb();
-    if (facebookResult.ok) break;
-    if (i < PUBLISH_ATTEMPTS - 1) await sleep(PUBLISH_RETRY_DELAY_MS);
-  }
-
-  return { facebookResult, instagramResult };
+  return publishWithChannelIdempotency({
+    channel,
+    userId,
+    referenceId,
+    payload,
+    logPrefix: `[auto:${userId}]`,
+    attempts: PUBLISH_ATTEMPTS,
+    retryDelayMs: PUBLISH_RETRY_DELAY_MS,
+    getChannelPublishStatus: (statusUserId, statusReferenceId, statusChannel) =>
+      getChannelPublishStatus(
+        admin,
+        statusUserId,
+        statusReferenceId,
+        statusChannel,
+      ),
+    publishFacebook: (publishPayload) =>
+      publishToFacebookPageForUser(admin, userId, publishPayload, opts),
+    publishInstagram: (publishPayload) =>
+      publishToInstagramForUser(admin, userId, publishPayload, opts),
+  });
 }
 
 export async function processDueAutoPosts(
@@ -140,7 +115,7 @@ export async function processDueAutoPosts(
   const { data: due, error: fetchError } = await admin
     .from("auto_post_settings")
     .select(
-      "user_id, cadence, next_run_at, use_ai_caption, drive_folder_id, channel, next_run_time_mode, schedule_timezone",
+      "user_id, cadence, next_run_at, use_ai_caption, drive_folder_id, channel, next_run_time_mode, schedule_timezone, last_error",
     )
     .eq("enabled", true)
     .not("next_run_at", "is", null)
@@ -160,6 +135,11 @@ export async function processDueAutoPosts(
       ? row.cadence
       : "daily";
     const prevNext = row.next_run_at;
+    const referenceId = resolveAutoPostReferenceId(
+      row.user_id,
+      prevNext,
+      row.last_error,
+    );
 
     const { refreshToken: refresh, pickCount: prevPickCount } =
       await loadDriveAccountForPick(admin, row.user_id);
@@ -203,7 +183,7 @@ export async function processDueAutoPosts(
       .from("auto_post_settings")
       .update({
         next_run_at: leaseUntil,
-        last_error: null,
+        last_error: formatAutoPostLastError("Processing.", referenceId),
         updated_at: new Date().toISOString(),
       })
       .eq("user_id", row.user_id)
@@ -320,6 +300,7 @@ export async function processDueAutoPosts(
       row.user_id,
       channel,
       payload,
+      referenceId,
     );
 
     const facebookOk = facebookResult ? facebookResult.ok : true;
@@ -344,7 +325,10 @@ export async function processDueAutoPosts(
       await admin
         .from("auto_post_settings")
         .update({
-          last_error: detail.slice(0, 2000),
+          last_error: formatAutoPostLastError(detail, referenceId).slice(
+            0,
+            2000,
+          ),
           next_run_at: new Date(Date.now() + RETRY_MS).toISOString(),
           updated_at: new Date().toISOString(),
         })

@@ -34,9 +34,10 @@ export async function publishToInstagramForUser(
     items: PublishMetaItem[];
     publishedDriveFileIds?: string[] | null;
   },
-  options?: { publishSource?: PublishedPostSource },
+  options?: { publishSource?: PublishedPostSource; referenceId?: string },
 ): Promise<PublishInstagramResult> {
   const publishSource: PublishedPostSource = options?.publishSource ?? "manual";
+  const referenceId = options?.referenceId ?? null;
   const caption = typeof payload.caption === "string" ? payload.caption : "";
   const items = Array.isArray(payload.items) ? payload.items : [];
 
@@ -180,6 +181,7 @@ export async function publishToInstagramForUser(
       instagramUsername: igUsername,
       publishSource,
       driveFileIds: mergedDriveIds,
+      referenceId,
     });
 
     return {

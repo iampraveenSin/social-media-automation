@@ -40,9 +40,10 @@ export async function publishToFacebookPageForUser(
     /** When `items` are uploads (e.g. baked collage), pass source Drive ids for history / de-dupe. */
     publishedDriveFileIds?: string[] | null;
   },
-  options?: { publishSource?: PublishedPostSource },
+  options?: { publishSource?: PublishedPostSource; referenceId?: string },
 ): Promise<PublishMetaResult> {
   const publishSource: PublishedPostSource = options?.publishSource ?? "manual";
+  const referenceId = options?.referenceId ?? null;
   const caption = typeof payload.caption === "string" ? payload.caption : "";
   const items = Array.isArray(payload.items) ? payload.items : [];
 
@@ -146,6 +147,7 @@ export async function publishToFacebookPageForUser(
       pageName,
       publishSource,
       driveFileIds: mergedDriveIds,
+      referenceId,
     });
     return {
       ok: true,
@@ -185,6 +187,7 @@ export async function publishToFacebookPageForUser(
       pageName,
       publishSource,
       driveFileIds: mergedDriveIds,
+      referenceId,
     });
     return {
       ok: true,
@@ -234,6 +237,7 @@ export async function publishToFacebookPageForUser(
       pageName,
       publishSource,
       driveFileIds: mergedDriveIds,
+      referenceId,
     });
     return {
       ok: true,
@@ -267,6 +271,7 @@ export async function publishToFacebookPageForUser(
     pageName,
     publishSource,
     driveFileIds: mergedDriveIds,
+    referenceId,
   });
   return {
     ok: true,
