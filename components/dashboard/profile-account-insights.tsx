@@ -93,7 +93,7 @@ export async function ProfileAccountInsights() {
     <section className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm sm:p-8">
       <h2 className="text-lg font-semibold text-slate-900">Account insights</h2>
       <p className="mt-1 text-xs text-slate-500">
-        Read-only data from Meta when your Page token and permissions allow it.
+        Read-only data from Meta when your connection and permissions allow it.
         Not all fields appear for every app or account type.
       </p>
 
@@ -158,7 +158,7 @@ export async function ProfileAccountInsights() {
         </div>
       ) : (
         <p className="mt-4 text-sm text-slate-500">
-          Facebook Page details did not load (token or field access).
+          Facebook Page details did not load.
           {row.selected_page_name ? (
             <>
               {" "}

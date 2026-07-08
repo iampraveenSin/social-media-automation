@@ -100,8 +100,7 @@ export async function BusinessPageOverview() {
       <section className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm sm:p-8">
         <h2 className="text-lg font-semibold text-slate-900">Facebook Page</h2>
         <p className="mt-1 text-xs text-slate-500">
-          Live fields from the Graph API when your Page token is valid. Manage
-          connection on{" "}
+          Live fields from Meta when your connection is active. Manage it on{" "}
           <Link href="/dashboard/main" className="text-indigo-600 underline">
             Main
           </Link>
@@ -109,21 +108,12 @@ export async function BusinessPageOverview() {
         </p>
         {!pageDetails ? (
           <p className="mt-4 text-sm text-amber-800">
-            Could not load Page details from Meta (token or permissions may be
-            expired). Showing saved name only:{" "}
-            <strong>{row.selected_page_name ?? pageId}</strong>
+            Could not load Page details from Meta. Showing saved name only:{" "}
+            <strong>{row.selected_page_name ?? "Selected Page"}</strong>
           </p>
         ) : null}
         <dl className="mt-4">
           <Row term="Page name" value={displayName} />
-          <Row
-            term="Page ID"
-            value={
-              <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">
-                {pageId}
-              </code>
-            }
-          />
           {pageDetails?.category ? (
             <Row term="Category" value={pageDetails.category} />
           ) : null}
@@ -209,14 +199,6 @@ export async function BusinessPageOverview() {
                       "",
                     )}
                   </>
-                }
-              />
-              <Row
-                term="Account ID"
-                value={
-                  <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">
-                    {igId}
-                  </code>
                 }
               />
               {igDetails?.followers_count != null ? (

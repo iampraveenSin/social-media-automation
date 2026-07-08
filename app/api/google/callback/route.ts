@@ -80,13 +80,13 @@ export async function GET(request: Request) {
     );
 
     if (upErr) {
-      console.error(upErr);
+      console.error("[google-callback] account upsert failed:", upErr.message);
       return NextResponse.redirect(`${mainUrl}?google=error`);
     }
 
     revalidatePath("/dashboard/main");
-  } catch (e) {
-    console.error(e);
+  } catch {
+    console.error("[google-callback] OAuth exchange failed");
     return NextResponse.redirect(`${mainUrl}?google=error`);
   }
 

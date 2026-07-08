@@ -97,7 +97,7 @@ export async function publishWithChannelIdempotency<TPayload>({
       console.log(
         `${logPrefix} ${label} retry ${i + 1}: ${
           result.ok ? "SUCCESS" : "FAILED"
-        } (${duration}ms)${result.ok ? "" : ` - ${result.error}`}`,
+        } (${duration}ms)`,
       );
       if (result.ok) return result;
       if (i < attempts - 1) await sleep(retryDelayMs);
@@ -153,12 +153,12 @@ export async function publishWithChannelIdempotency<TPayload>({
     if (settled.status === "fulfilled") {
       const { platform, result, duration } = settled.value;
       console.log(
-        `${logPrefix} ${platform}: ${result.ok ? "SUCCESS" : "FAILED"} (${duration}ms)${
-          result.ok ? "" : ` - ${result.error}`
-        }`,
+        `${logPrefix} ${platform}: ${
+          result.ok ? "SUCCESS" : "FAILED"
+        } (${duration}ms)`,
       );
     } else {
-      console.error(`${logPrefix} Platform promise rejected:`, settled.reason);
+      console.error(`${logPrefix} Platform promise rejected`);
     }
   }
 

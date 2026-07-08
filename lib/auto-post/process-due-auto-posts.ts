@@ -87,7 +87,7 @@ async function publishAutoToChannels(
     userId,
     referenceId,
     payload,
-    logPrefix: `[auto:${userId}]`,
+    logPrefix: "[auto]",
     attempts: PUBLISH_ATTEMPTS,
     retryDelayMs: PUBLISH_RETRY_DELAY_MS,
     getChannelPublishStatus: (statusUserId, statusReferenceId, statusChannel) =>

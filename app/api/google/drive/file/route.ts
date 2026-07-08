@@ -67,8 +67,8 @@ export async function GET(request: Request) {
         "Cache-Control": "private, max-age=300",
       },
     });
-  } catch (e) {
-    console.error(e);
+  } catch {
+    console.error("[google-drive-file] proxy failed");
     return NextResponse.json({ error: "Drive proxy error" }, { status: 502 });
   }
 }
