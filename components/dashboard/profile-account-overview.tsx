@@ -2,16 +2,6 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
-function formatWhen(iso: string | null | undefined): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleString(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
-}
-
 function Def({
   term,
   value,
@@ -45,9 +35,7 @@ export async function ProfileAccountOverview() {
 
   const { data: metaRaw, error: metaErr } = await supabase
     .from("meta_accounts")
-    .select(
-      "facebook_user_id, selected_page_id, selected_page_name, instagram_account_id, instagram_username, token_expires_at",
-    )
+    .select("selected_page_name, instagram_username")
     .eq("user_id", user.id)
     .maybeSingle();
 
@@ -60,12 +48,8 @@ export async function ProfileAccountOverview() {
   const metaConnected = Boolean(metaRaw);
 
   const meta = metaRaw as {
-    facebook_user_id: string | null;
-    selected_page_id: string | null;
     selected_page_name: string | null;
-    instagram_account_id: string | null;
     instagram_username: string | null;
-    token_expires_at: string | null;
   } | null;
 
   const driveEmail =
@@ -145,52 +129,16 @@ export async function ProfileAccountOverview() {
                 }
               />
               <Def
-                term="Page ID"
-                value={
-                  <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">
-                    {meta?.selected_page_id ?? "—"}
-                  </code>
-                }
-              />
-              <Def
                 term="Instagram"
                 value={
                   meta?.instagram_username ? (
-                    <span>
-                      @
-                      {meta.instagram_username.replace(/^@/, "")}
-                      {meta.instagram_account_id ? (
-                        <span className="ml-2 text-xs text-slate-500">
-                          (ID{" "}
-                          <code className="rounded bg-slate-100 px-1">
-                            {meta.instagram_account_id}
-                          </code>
-                          )
-                        </span>
-                      ) : null}
-                    </span>
+                    <span>@{meta.instagram_username.replace(/^@/, "")}</span>
                   ) : (
                     <span className="text-slate-600">
                       No Business/Creator account linked to this Page, or not
                       stored yet.
                     </span>
                   )
-                }
-              />
-              <Def
-                term="Facebook user ID"
-                value={
-                  <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">
-                    {meta?.facebook_user_id ?? "—"}
-                  </code>
-                }
-              />
-              <Def
-                term="Token expires"
-                value={
-                  <span title="Reconnect on Main if publishing stops working.">
-                    {formatWhen(meta?.token_expires_at)}
-                  </span>
                 }
               />
             </>

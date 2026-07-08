@@ -106,14 +106,6 @@ export async function InstagramInfoSection() {
             </div>
             <div>
               <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                Account ID
-              </dt>
-              <dd className="break-all font-mono text-xs text-slate-800">
-                {igId}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
                 Account type
               </dt>
               <dd>

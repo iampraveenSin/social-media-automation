@@ -64,8 +64,8 @@ export async function GET(request: Request) {
       },
       { headers: noStore },
     );
-  } catch (e) {
-    console.error(e);
+  } catch {
+    console.error("[google-drive-random] random pick failed");
     return NextResponse.json({ error: "Random pick failed" }, { status: 502 });
   }
 }

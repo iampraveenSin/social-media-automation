@@ -179,8 +179,8 @@ export function ComposerProvider({ children }: { children: ReactNode }) {
         setItems((prev) =>
           reconcileUploadRevokes(prev, applyComposerItem(prev, item)),
         );
-      } catch (e) {
-        console.error(e);
+      } catch {
+        console.error("[composer] upload preview creation failed");
       }
     }
   }, []);

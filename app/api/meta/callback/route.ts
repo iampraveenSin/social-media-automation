@@ -80,12 +80,12 @@ export async function GET(request: Request) {
     );
 
     if (upErr) {
-      console.error(upErr);
+      console.error("[meta-callback] account upsert failed:", upErr.message);
       return NextResponse.redirect(`${mainUrl}?facebook=error`);
     }
     revalidatePath("/dashboard/main");
-  } catch (e) {
-    console.error(e);
+  } catch {
+    console.error("[meta-callback] OAuth exchange failed");
     return NextResponse.redirect(`${mainUrl}?facebook=error`);
   }
 

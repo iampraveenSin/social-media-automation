@@ -108,18 +108,28 @@ export async function GET(request: Request) {
     const caption = row.caption as string;
     const publishItems = items as PublishMetaItem[];
 
-    // Idempotency checks: skip channels already published
-    const fbStatus = channel === "instagram" 
-      ? { published: false } 
-      : await getChannelPublishStatus(admin, userId, referenceId, "facebook_page");
-    const igStatus = channel === "facebook" 
-      ? { published: false } 
-      : await getChannelPublishStatus(admin, userId, referenceId, "instagram");
+    const fbStatus =
+      channel === "instagram"
+        ? { published: false }
+        : await getChannelPublishStatus(
+            admin,
+            userId,
+            referenceId,
+            "facebook_page",
+          );
+    const igStatus =
+      channel === "facebook"
+        ? { published: false }
+        : await getChannelPublishStatus(admin, userId, referenceId, "instagram");
 
     const shouldPublishFb = channel !== "instagram" && !fbStatus.published;
     const shouldPublishIg = channel !== "facebook" && !igStatus.published;
 
-    console.log(`[scheduled:${referenceId}] Channel: ${channel}, FB: ${shouldPublishFb ? 'publishing' : 'skip (already published)'}, IG: ${shouldPublishIg ? 'publishing' : 'skip (already published)'}`);
+    console.log(
+      `[scheduled] Channel: ${channel}, FB: ${
+        shouldPublishFb ? "publishing" : "skip (already published)"
+      }, IG: ${shouldPublishIg ? "publishing" : "skip (already published)"}`,
+    );
 
     // Concurrent execution with timing
     const fbStart = shouldPublishFb ? Date.now() : 0;
@@ -132,11 +142,11 @@ export async function GET(request: Request) {
         publishToFacebookPageForUser(admin, userId, {
           caption,
           items: publishItems,
-        }, { publishSource: "scheduled", referenceId }).then(result => ({
-          platform: 'facebook',
+        }, { publishSource: "scheduled", referenceId }).then((result) => ({
+          platform: "facebook",
           result,
           duration: Date.now() - fbStart,
-        }))
+        })),
       );
     }
     
@@ -145,11 +155,11 @@ export async function GET(request: Request) {
         publishToInstagramForUser(admin, userId, {
           caption,
           items: publishItems,
-        }, { publishSource: "scheduled", referenceId }).then(result => ({
-          platform: 'instagram',
+        }, { publishSource: "scheduled", referenceId }).then((result) => ({
+          platform: "instagram",
           result,
           duration: Date.now() - igStart,
-        }))
+        })),
       );
     }
 
@@ -157,20 +167,34 @@ export async function GET(request: Request) {
 
     // Log individual platform results
     for (const settled of settledResults) {
-      if (settled.status === 'fulfilled') {
+      if (settled.status === "fulfilled") {
         const { platform, result, duration } = settled.value;
-        console.log(`[scheduled:${referenceId}] ${platform}: ${result.ok ? 'SUCCESS' : 'FAILED'} (${duration}ms)${result.ok ? '' : ` - ${result.error}`}`);
+        console.log(
+          `[scheduled] ${platform}: ${
+            result.ok ? "SUCCESS" : "FAILED"
+          } (${duration}ms)`,
+        );
       } else {
-        console.error(`[scheduled:${referenceId}] Platform promise rejected:`, settled.reason);
+        console.error("[scheduled] Platform promise rejected");
       }
     }
 
     // Determine overall status based on actual results
-    const fbResult = settledResults.find(r => r.status === 'fulfilled' && r.value.platform === 'facebook');
-    const igResult = settledResults.find(r => r.status === 'fulfilled' && r.value.platform === 'instagram');
+    const fbResult = settledResults.find(
+      (r) => r.status === "fulfilled" && r.value.platform === "facebook",
+    );
+    const igResult = settledResults.find(
+      (r) => r.status === "fulfilled" && r.value.platform === "instagram",
+    );
     
-    const fbOk = fbResult && fbResult.status === 'fulfilled' ? fbResult.value.result.ok : (channel === "instagram" || fbStatus.published);
-    const igOk = igResult && igResult.status === 'fulfilled' ? igResult.value.result.ok : (channel === "facebook" || igStatus.published);
+    const fbOk =
+      fbResult && fbResult.status === "fulfilled"
+        ? fbResult.value.result.ok
+        : channel === "instagram" || fbStatus.published;
+    const igOk =
+      igResult && igResult.status === "fulfilled"
+        ? igResult.value.result.ok
+        : channel === "facebook" || igStatus.published;
     
     const allOk = fbOk && igOk;
 
@@ -186,8 +210,8 @@ export async function GET(request: Request) {
       results.push({ id: row.id, status: "published" });
     } else {
       const errors = [
-        fbResult && fbResult.status === 'fulfilled' && !fbResult.value.result.ok ? `Facebook: ${fbResult.value.result.error}` : null,
-        igResult && igResult.status === 'fulfilled' && !igResult.value.result.ok ? `Instagram: ${igResult.value.result.error}` : null,
+        fbResult && fbResult.status === "fulfilled" && !fbResult.value.result.ok ? `Facebook: ${fbResult.value.result.error}` : null,
+        igResult && igResult.status === "fulfilled" && !igResult.value.result.ok ? `Instagram: ${igResult.value.result.error}` : null,
       ].filter(Boolean);
       
       const detail = errors.length > 0 ? errors.join(" | ") : "Partial failure";

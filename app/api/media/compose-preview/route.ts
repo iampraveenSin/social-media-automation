@@ -60,7 +60,7 @@ export async function POST(request: Request) {
       },
     });
   } catch (e) {
-    console.error(e);
+    console.error("[compose-preview] upload conversion failed");
     const msg = e instanceof Error ? e.message : "Conversion failed";
     return NextResponse.json({ error: msg }, { status: 422 });
   }
@@ -100,7 +100,7 @@ export async function GET(request: Request) {
     buffer = fetched.buffer;
     contentType = fetched.contentType;
   } catch (e) {
-    console.error(e);
+    console.error("[compose-preview] drive preview download failed");
     const msg = e instanceof Error ? e.message : "Could not download from Drive.";
     return NextResponse.json({ error: msg }, { status: 502 });
   }
@@ -129,7 +129,7 @@ export async function GET(request: Request) {
       },
     });
   } catch (e) {
-    console.error(e);
+    console.error("[compose-preview] drive preview conversion failed");
     const msg = e instanceof Error ? e.message : "Conversion failed";
     return NextResponse.json({ error: msg }, { status: 422 });
   }

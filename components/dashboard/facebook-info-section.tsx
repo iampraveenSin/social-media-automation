@@ -146,14 +146,6 @@ export async function FacebookInfoSection() {
             ) : null}
             <div>
               <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                Page ID
-              </dt>
-              <dd className="break-all font-mono text-xs text-slate-800">
-                {pageId}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
                 Account type
               </dt>
               <dd>

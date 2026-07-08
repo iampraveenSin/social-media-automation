@@ -38,7 +38,7 @@ export async function GET(request: Request) {
     );
     return NextResponse.json({ files, nextPageToken, folderId });
   } catch (e) {
-    console.error(e);
+    console.error("[google-drive-files] list failed");
     const message = e instanceof Error ? e.message : "Drive list failed";
     return NextResponse.json({ error: message }, { status: 502 });
   }

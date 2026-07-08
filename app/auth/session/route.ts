@@ -28,7 +28,6 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  console.log("POST /auth/session called");
   const response = NextResponse.json({ ok: true });
 
   try {
@@ -57,17 +56,16 @@ export async function POST(request: NextRequest) {
       refresh_token,
     });
     if (error) {
-      console.error("/auth/session setSession error:", error.message);
+      console.error("/auth/session setSession failed");
       return NextResponse.json(
         { ok: false, error: error.message },
         { status: 500 },
       );
     }
 
-    console.log("/auth/session setSession succeeded");
     return response;
   } catch (error) {
-    console.error("/auth/session unexpected error:", error);
+    console.error("/auth/session unexpected error");
     return NextResponse.json(
       {
         ok: false,
